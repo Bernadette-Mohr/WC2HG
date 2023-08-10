@@ -4,11 +4,11 @@ import openmm as mm
 
 class PathsamplingUtilities:
 
-    def __init__(self):
+    def __init__(self) -> object:
         self.file_names = list()
         self.plumed_script = str()
 
-    def get_inputs(self, *args, input_path=None):
+    def get_inputs(self, *args: object, input_path: object = None) -> object:
         self.file_names = [name for name in args]
         for idx, file_name in enumerate(self.file_names):
             try:
