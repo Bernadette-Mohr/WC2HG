@@ -2,32 +2,32 @@ import sys
 import argparse
 from pathlib import Path
 import configparser
-
-import openmm as mm
-print(mm.__version__)
 from openmm import app
-from openmm import unit
 from openmmplumed import PlumedForce
 import mdtraj as md
-print(md.version.version)
 from pathsampling_utilities import PathsamplingUtilities
 from metadynamics_setup import MetadynamicsSimulation
+
+sys.path.append('')
 
 
 def run_metadynamics_simulation(input_dir=None, config_file=None, plumed_file=None, pdb_file=None,
                                 ff_list=None, system_name=None, output_dir=None):
 
-    utils = PathsamplingUtilities()
+    # Prepare the Simulation
+
+    print('Building system...')
+    utils: PathsamplingUtilities = PathsamplingUtilities()
     config_file, plumed_file, pdb_file = utils.get_inputs(config_file, plumed_file, pdb_file, input_path=input_dir)
-    script = utils.get_plumed_settings(plumed_file)
     configs = configparser.ConfigParser()
+    configs.optionxform = str
     configs.read(config_file)
 
     setup = MetadynamicsSimulation(configs=configs, forcefield_list=ff_list, pdb_file=pdb_file, system_name=system_name,
                                    output_path=output_dir)
     simulation = setup.setup_simulation()
     system = setup.system
-    print(type(system))
+
     # Minimize and Equilibrate
 
     print('Performing energy minimization...')
@@ -37,6 +37,28 @@ def run_metadynamics_simulation(input_dir=None, config_file=None, plumed_file=No
     simulation.step(setup.equilibrationSteps)
 
     # Simulate
+
+    script = utils.get_plumed_settings(plumed_file)
+    system.addForce(PlumedForce(script))
+    simulation.context.reinitialize(preserveState=True)
+
+    print('Running simulation...')
+    dataReporter = app.StateDataReporter(f'{output_dir}/{system_name}_data.csv', setup.reportInterval,
+                                         totalSteps=setup.steps, time=True, speed=True, progress=True,
+                                         elapsedTime=True, remainingTime=True, potentialEnergy=True, kineticEnergy=True,
+                                         totalEnergy=True, temperature=True, volume=True, density=True, separator=';')
+    trajectoryReporter = md.reporters.HDF5Reporter(f'{output_dir}/{system_name}_trajectory.h5', setup.reportInterval,
+                                                   coordinates=True, time=True, cell=True, potentialEnergy=True,
+                                                   kineticEnergy=True, temperature=True, velocities=True,
+                                                   enforcePeriodicBox=True)
+    simulation.reporters.append(dataReporter)
+    simulation.reporters.append(trajectoryReporter)
+    simulation.currentStep = setup.currentStep
+    simulation.step(setup.steps)
+
+    trajectoryReporter.close()
+
+    simulation.saveState(f'{output_dir}/{system_name}_final_state.xml')
 
 
 if __name__ == '__main__':

@@ -1,4 +1,5 @@
 import openmm as mm
+print(mm.__version__)
 from openmm import app
 from openmm import unit
 from pathsampling_utilities import PathsamplingUtilities
@@ -38,10 +39,13 @@ class MetadynamicsSimulation:
         print(self.platformProperties)
         self.equilibrationSteps = configs['SIMULATION'].getint('equilibrationSteps')
         self.steps = configs['SIMULATION'].getint('steps')
+        self.reportInterval = configs['SIMULATION'].getint('reportInterval')
+        self.currentStep = configs['SIMULATION'].getint('currentStep')
         # OpenMM: initialize modules.
         self._forcefield = self.__get_forcefield()
         self.system = self.__setup_system()
-        self._integrator = self.__setup_integrator()
+        # self._integrator = self.__setup_integrator()
+        self.simulation = self.setup_simulation()
 
     def __get_forcefield(self):
         return app.ForceField(*self.forcefield_list)
@@ -66,7 +70,7 @@ class MetadynamicsSimulation:
         return integrator
 
     def setup_simulation(self):
-        simulation = app.Simulation(self.topology, self.system, self._integrator, self.platform,
+        simulation = app.Simulation(self.topology, self.system, self.__setup_integrator(), self.platform,
                                     self.platformProperties)
         simulation.context.setPositions(self.positions)
 

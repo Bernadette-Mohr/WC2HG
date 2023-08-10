@@ -3,14 +3,19 @@ import os
 import numpy as np
 # OPS functionalities
 import openpathsampling as paths
+from openpathsampling.experimental.storage import monkey_patch_all
+from openpathsampling.experimental.storage import Storage
 from openpathsampling.numerics import HistogramPlotter2D
 import openpathsampling.visualize as ops_vis
 # plotting
 import matplotlib
 import matplotlib.pyplot as plt
+import cairosvg
+
+paths = monkey_patch_all(paths)
+paths.InterfaceSet.simstore = True
 matplotlib.rcParams.update({'font.size': 18})
 matplotlib.rcParams.update({'figure.figsize': (8.8, 6.6)})
-import cairosvg
 
 
 def plot_path_tree(storage):
@@ -34,7 +39,8 @@ def plot_path_lengths(storage):
 
 
 def analyze_tps_runs():
-    storage = paths.AnalysisStorage('/media/bmohr/Backup/POSTDOC/WCHG/TPS/DNAWC/DNAWC_TEST.nc')
+    # storage = paths.AnalysisStorage('/media/bmohr/Backup/POSTDOC/WCHG/TPS/DNAWC/DNAWC_TEST.nc')
+    storage = Storage('DNAWC_TEST.db', mode='r')
     scheme = storage.schemes[0]
     scheme.move_summary(storage.steps)  # just returns some statistics
 
