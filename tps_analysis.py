@@ -3,8 +3,15 @@ import os
 import numpy as np
 # OPS functionalities
 import openpathsampling as paths
-from openpathsampling.numerics import HistogramPlotter2D
+from openpathsampling.experimental.storage import monkey_patch_all
+paths = monkey_patch_all(paths)
+paths.InterfaceSet.simstore = True
+from openpathsampling.experimental.storage.collective_variables import CoordinateFunctionCV, CollectiveVariable
+from openpathsampling.experimental.simstore import SQLStorageBackend
+from openpathsampling.experimental.storage import Storage
+from openpathsampling.experimental.simstore import Processor, StorableFunctionConfig
 import openpathsampling.visualize as ops_vis
+from openpathsampling.numerics import HistogramPlotter2D
 # plotting
 import matplotlib
 import matplotlib.pyplot as plt
@@ -15,7 +22,8 @@ import cairosvg
 
 def plot_path_tree(storage):
     tree = ops_vis.PathTree(
-        storage.steps,
+        # storage.steps,
+        storage,
         ops_vis.ReplicaEvolution(replica=0, accepted=True)
     )
     print('Decorrelated paths', len(tree.generator.decorrelated))
@@ -26,7 +34,7 @@ def plot_path_tree(storage):
 
 
 def plot_path_lengths(storage):
-    path_lengths = [len(step.active[0].trajectory) for step in storage.steps]
+    path_lengths = [len(step.active[0].trajectory) for step in storage]  # storage.steps
     plt.hist(path_lengths, bins=40, alpha=0.5)
     plt.ylabel("Count")
     plt.xlabel("Path length (Frames)")
@@ -34,12 +42,19 @@ def plot_path_lengths(storage):
 
 
 def analyze_tps_runs():
-    storage = paths.AnalysisStorage('/media/bmohr/Backup/POSTDOC/WCHG/TPS/DNAWC/DNAWC_TEST.nc')
+    # storage = paths.AnalysisStorage('/media/bmohr/Backup/POSTDOC/WCHG/TPS/DNAWC/DNAWC_TEST.nc')
+    storage = Storage(f'/media/bmohr/Backup/POSTDOC/WCHG/TPS/DNAWC/new.db', 'r')
     scheme = storage.schemes[0]
-    scheme.move_summary(storage.steps)  # just returns some statistics
+    steps = list()
+    try:
+        for idx, step in enumerate(storage.steps):
+            steps.append(step)
+    except Exception as e:
+        print(f'Unable to load step {idx} from storage: {e.__class__}: {str(e)}')
 
-    # plot_path_lengths(storage)
-    plot_path_tree(storage)
+    scheme.move_summary(steps=steps)  # just returns some statistics
+    # plot_path_lengths(storage=steps)
+    plot_path_tree(storage=steps)
 
 
 if __name__ == '__main__':
