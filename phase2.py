@@ -1,6 +1,6 @@
 import sys
 import os
-# libdir = os.path.expanduser('/gpfs/home4/bmohr98/micromamba/envs/tps/lib/python3.9/site-packages/')
+# libdir = os.path.expanduser('/home/bmohr98/micromamba/envs/ops/lib/python3.9/site-packages/')
 # sys.path.append(libdir)
 from pathlib import Path
 import argparse
@@ -8,6 +8,8 @@ import h5py
 # from datetime import datetime
 import matplotlib.pyplot as plt
 import logging.config
+from multiprocessing import Process
+import time
 
 from openmm import app
 import openmm as mm
@@ -20,12 +22,8 @@ import openpathsampling.engines.openmm as ops_openmm
 from openpathsampling.experimental.storage import monkey_patch_all
 from openpathsampling.experimental.storage.collective_variables import MDTrajFunctionCV
 from openpathsampling.experimental.storage import Storage
+
 paths = monkey_patch_all(paths)
-
-# from openpathsampling.engines import MDTrajTopology
-# from openpathsampling.engines import gromacs as ops_gmx
-# from openpathsampling.engines.openmm.tools import ops_load_trajectory
-
 import mdtraj as md
 
 
@@ -54,152 +52,164 @@ def extract_velocities(file_name, start=0, stop=None):
     return velocities
 
 
-def run_ops(input_path, file_name, pdb_file, traj_file, out_path, n_steps, run_id):
-
-    pdb_file, traj_file = get_inputs(input_path, pdb_file, traj_file)
-
-    cwd = Path().resolve()
-    initial_traj = cwd / '000.h5'
-    initial_traj.write_bytes(Path(traj_file).read_bytes())
-
-    if Path(cwd / 'initial_frame.h5').is_file():
-        Path(cwd / 'initial_frame.h5').unlink()
-
-    # OpenMM pdb file object
-    pdb = app.PDBFile(pdb_file)
-
-    # OpenMM Engine setup
-    forcefield = app.ForceField('amber/protein.ff14SB.xml', 'amber/DNA.bsc1.xml', 'amber/tip3p_standard.xml')
-    system = forcefield.createSystem(topology=pdb.topology,
-                                     nonbondedMethod=app.PME,
-                                     nonbondedCutoff=1.1 * unit.nanometer,
-                                     constraints=app.HBonds,
-                                     rigidWater=True,
-                                     ewaldErrorTolerance=1e-05)
-    system.addForce(mm.MonteCarloBarostat(1 * unit.bar, 300 * unit.kelvin, 25))
-
-    integrator = VVVRIntegrator(
-        300 * unit.kelvin,  # Temperature of heat bath
-        5.0 / unit.picoseconds,  # Friction coefficient
-        0.002 * unit.picoseconds  # Time step
-    )
-    integrator.setConstraintTolerance(0.00001)
-
-    print('Loading trajectory with MDTraj')
-    # load metadynamics trajectory from file
-    wc = md.load_hdf5(initial_traj)
-    topology = wc.topology
-    # openmm_top = MDTrajTopology(topology)
-
-    openmm_properties = {'Precision': 'mixed'}  # 'DeviceIndex': '0'
-    options = {
-        'n_steps_per_frame': 2500,  # number of integration steps per frame of the template trajectory
-        'n_frames_max': 4000  # so far, the longest accepted trajectory is 13 frames...?
-    }
-
-    # OPS snapshot file (Not equivalent to OpenMM PDBFile!?)
-    template = ops_openmm.snapshot_from_pdb(pdb_file=pdb_file)
-    md_engine = ops_openmm.Engine(
-        topology=template.topology,
-        system=system,
-        integrator=integrator,
-        openmm_properties=openmm_properties,
-        options=options
-    ).named('OMM_engine')
-    # md_engine._simulation = mm.app.Simulation(pdb.topology, system, integrator)
-    # md_engine._simulation.context.setPositions(pdb.positions)
-    md_engine.initialize(mm.openmm.Platform.getPlatformByName('CUDA'))
-    md_engine.current_snapshot = template
-
-    bondlist = list()
-    bondlist.append(topology.select('name N1 and resid 6 or name N3 and resid 16'))  # WC
-    bondlist.append(topology.select('name N7 and resid 6 or name N3 and resid 16'))  # HG
-    bondlist.append(topology.select('name N6 and resid 6 or name O4 and resid 16'))  # BP
-
-    ha = topology.select('name "H3" and resid 16')[0]
-
-    # Collective Variable
-    d_WC = MDTrajFunctionCV(md.compute_distances, topology=template.topology, atom_pairs=[bondlist[0]]).named('d_WC')
-    d_HG = MDTrajFunctionCV(md.compute_distances, topology=template.topology, atom_pairs=[bondlist[1]]).named('d_HG')
-    d_BP = MDTrajFunctionCV(md.compute_distances, topology=template.topology, atom_pairs=[bondlist[2]]).named('d_BP')
-
-    # a_hg = MDTrajFunctionCV("a_hg", md.compute_angles, template.topology,
-    #                         angle_indices=[[ha] + bondlist[1]])
-    # a_wc = MDTrajFunctionCV("a_wc", md.compute_angles, template.topology,
-    #                         angle_indices=[[ha] + bondlist[1]])
-
-    # Volumes
-    distarr2 = [0, 0.35]  # Hoeken weer toevoegen!
-
-    # Defining the stable states
-    WC = (
-            paths.CVDefinedVolume(d_WC, lambda_min=distarr2[0], lambda_max=distarr2[1]) &
-            paths.CVDefinedVolume(d_BP, lambda_min=distarr2[0], lambda_max=distarr2[1])
-    ).named("WC")
-
-    HG = (
-            paths.CVDefinedVolume(d_HG, lambda_min=distarr2[0], lambda_max=distarr2[1]) &
-            paths.CVDefinedVolume(d_BP, lambda_min=distarr2[0], lambda_max=distarr2[1])
-    ).named("noWC")
-
-    # Trajectory
-    ops_trj = paths.engines.openmm.tools.trajectory_from_mdtraj(wc, velocities=extract_velocities(traj_file))
-
-    # Reaction network
-    network = paths.TPSNetwork(initial_states=WC, final_states=HG).named('tps_network')
-
-    print("Initial conformation")
-    plt.plot(d_WC(ops_trj), d_HG(ops_trj), 'k.')
-
-    plt.xlabel("Hydrogen bond distance WC")
-    plt.ylabel("Hydrogen bond distance HG")
-    plt.title("Rotation")
-    plt.savefig(out_path / f'{file_name}_{run_id}_h-bond_distances_initial.png')
-
-    # Emsembles
-    # subtrajectories = [network.analysis_ensembles[0].split(ops_trj)]
-    subtrajectories = []
-    for ens in network.analysis_ensembles:
-        subtrajectories += ens.split(ops_trj)
-
-    for subtrajectory in subtrajectories[0]:
-        plt.plot(d_WC(subtrajectory), d_HG(subtrajectory), 'or-')
-
-    plt.xlabel("Hydrogen bond distance WC")
-    plt.ylabel("Hydrogen bond distance HG")
-    plt.title("Rotation")
-    plt.savefig(out_path / f'{file_name}_{run_id}_h-bond_distances_subtrajectories.png')
-
-    # Move scheme
-    scheme = paths.OneWayShootingMoveScheme(network=network,
-                                            selector=paths.UniformSelector(),
-                                            engine=md_engine)
-
-    # Initial conditions
-    initial_conditions = scheme.initial_conditions_from_trajectories(subtrajectories)
-    scheme.assert_initial_conditions(initial_conditions)
-
-    print('Start TPS production run')
+def run_ops(input_path, file_name, pdb_file, traj_file, out_path, n_steps, run_id, walltime):
+    start_time = time.time()  # Time at the start of this process
 
     # Storage
     paths.InterfaceSet.simstore = True
     fname = Path(out_path / f'{file_name}_{run_id}').with_suffix('.db')
     storage = Storage(str(fname), 'w')
-    storage.save(template)
-    storage.save(ops_trj)
-    storage.save(initial_conditions)
 
-    sampler = paths.PathSampling(storage=storage,
-                                 move_scheme=scheme,
-                                 sample_set=initial_conditions).named('TPS_WC2HG')
+    # Monitor elapsed time, close storage if walltime is exceeded
+    while True:
+        elapsed_time = time.time() - start_time
+        if elapsed_time > walltime:
+            storage.close()
 
-    logging.config.fileConfig(f'logging.conf', disable_existing_loggers=False)
+        pdb_file, traj_file = get_inputs(input_path, pdb_file, traj_file)
 
-    sampler.save_frequency = 100
-    sampler.run(n_steps)
+        cwd = Path().resolve()
+        initial_traj = cwd / '000.h5'
+        initial_traj.write_bytes(Path(traj_file).read_bytes())
 
-    print(storage.summary())
-    storage.close()
+        if Path(cwd / 'initial_frame.h5').is_file():
+            Path(cwd / 'initial_frame.h5').unlink()
+
+        # OpenMM pdb file object
+        pdb = app.PDBFile(pdb_file)
+
+        # OpenMM Engine setup
+        forcefield = app.ForceField('amber/protein.ff14SB.xml', 'amber/DNA.bsc1.xml', 'amber/tip3p_standard.xml')
+        system = forcefield.createSystem(topology=pdb.topology,
+                                         nonbondedMethod=app.PME,
+                                         nonbondedCutoff=1.1 * unit.nanometer,
+                                         constraints=app.HBonds,
+                                         rigidWater=True,
+                                         ewaldErrorTolerance=1e-05)
+        system.addForce(mm.MonteCarloBarostat(1 * unit.bar, 300 * unit.kelvin, 25))
+
+        integrator = VVVRIntegrator(
+            300 * unit.kelvin,  # Temperature of heat bath
+            3.0 / unit.picoseconds,  # Friction coefficient
+            0.002 * unit.picoseconds  # Time step
+        )
+        integrator.setConstraintTolerance(0.00001)
+
+        print('Loading trajectory with MDTraj')
+        # load metadynamics trajectory from file
+        wc = md.load_hdf5(initial_traj)
+        topology = wc.topology
+        # openmm_top = MDTrajTopology(topology)
+
+        openmm_properties = {'Precision': 'mixed'}  # 'DeviceIndex': '0'
+        options = {
+            'n_steps_per_frame': 2500,  # number of integration steps per frame of the template trajectory
+            'n_frames_max': 4000  # so far, the longest accepted trajectory is 13 frames...?
+        }
+
+        # OPS snapshot file (Not equivalent to OpenMM PDBFile!?)
+        template = ops_openmm.snapshot_from_pdb(pdb_file=pdb_file)
+        md_engine = ops_openmm.Engine(
+            topology=template.topology,
+            system=system,
+            integrator=integrator,
+            openmm_properties=openmm_properties,
+            options=options
+        ).named('OMM_engine')
+        # md_engine._simulation = mm.app.Simulation(pdb.topology, system, integrator)
+        # md_engine._simulation.context.setPositions(pdb.positions)
+        md_engine.initialize(mm.openmm.Platform.getPlatformByName('CUDA'))
+        md_engine.current_snapshot = template
+
+        bondlist = list()
+        bondlist.append(topology.select('name N1 and resid 6 or name N3 and resid 16'))  # WC
+        bondlist.append(topology.select('name N7 and resid 6 or name N3 and resid 16'))  # HG
+        bondlist.append(topology.select('name N6 and resid 6 or name O4 and resid 16'))  # BP
+
+        ha = topology.select('name "H3" and resid 16')[0]
+
+        # Collective Variable
+        d_WC = MDTrajFunctionCV(md.compute_distances, topology=template.topology, atom_pairs=[bondlist[0]]).named(
+            'd_WC')
+        d_HG = MDTrajFunctionCV(md.compute_distances, topology=template.topology, atom_pairs=[bondlist[1]]).named(
+            'd_HG')
+        d_BP = MDTrajFunctionCV(md.compute_distances, topology=template.topology, atom_pairs=[bondlist[2]]).named(
+            'd_BP')
+
+        # a_hg = MDTrajFunctionCV("a_hg", md.compute_angles, template.topology,
+        #                         angle_indices=[[ha] + bondlist[1]])
+        # a_wc = MDTrajFunctionCV("a_wc", md.compute_angles, template.topology,
+        #                         angle_indices=[[ha] + bondlist[1]])
+
+        # Volumes
+        distarr2 = [0, 0.35]  # Hoeken weer toevoegen!
+
+        # Defining the stable states
+        WC = (
+                paths.CVDefinedVolume(d_WC, lambda_min=distarr2[0], lambda_max=distarr2[1]) &
+                paths.CVDefinedVolume(d_BP, lambda_min=distarr2[0], lambda_max=distarr2[1])
+        ).named("WC")
+
+        HG = (
+                paths.CVDefinedVolume(d_HG, lambda_min=distarr2[0], lambda_max=distarr2[1]) &
+                paths.CVDefinedVolume(d_BP, lambda_min=distarr2[0], lambda_max=distarr2[1])
+        ).named("noWC")
+
+        # Trajectory
+        ops_trj = paths.engines.openmm.tools.trajectory_from_mdtraj(wc, velocities=extract_velocities(traj_file))
+
+        # Reaction network
+        network = paths.TPSNetwork(initial_states=WC, final_states=HG).named('tps_network')
+
+        print("Initial conformation")
+        plt.plot(d_WC(ops_trj), d_HG(ops_trj), 'k.')
+
+        plt.xlabel("Hydrogen bond distance WC")
+        plt.ylabel("Hydrogen bond distance HG")
+        plt.title("Rotation")
+        plt.savefig(out_path / f'{file_name}_{run_id}_h-bond_distances_initial.png')
+
+        # Emsembles
+        # subtrajectories = [network.analysis_ensembles[0].split(ops_trj)]
+        subtrajectories = []
+        for ens in network.analysis_ensembles:
+            subtrajectories += ens.split(ops_trj)
+
+        for subtrajectory in subtrajectories[0]:
+            plt.plot(d_WC(subtrajectory), d_HG(subtrajectory), 'or-')
+
+        plt.xlabel("Hydrogen bond distance WC")
+        plt.ylabel("Hydrogen bond distance HG")
+        plt.title("Rotation")
+        plt.savefig(out_path / f'{file_name}_{run_id}_h-bond_distances_subtrajectories.png')
+
+        # Move scheme
+        scheme = paths.OneWayShootingMoveScheme(network=network,
+                                                selector=paths.UniformSelector(),
+                                                engine=md_engine)
+
+        # Initial conditions
+        initial_conditions = scheme.initial_conditions_from_trajectories(subtrajectories)
+        scheme.assert_initial_conditions(initial_conditions)
+
+        print('Start TPS production run')
+
+        # Storage
+        storage.save(template)
+        storage.save(ops_trj)
+        storage.save(initial_conditions)
+
+        sampler = paths.PathSampling(storage=storage,
+                                     move_scheme=scheme,
+                                     sample_set=initial_conditions).named('TPS_WC2HG')
+
+        logging.config.fileConfig(f'logging.conf', disable_existing_loggers=False)
+
+        sampler.save_frequency = 50
+        sampler.run(n_steps)
+
+        print(storage.summary())
+        storage.close()
 
 
 if __name__ == "__main__":
@@ -225,4 +235,12 @@ if __name__ == "__main__":
     outpath = args.output_path  # -out </path/to/output/directory>
     nsteps = args.n_steps  # -nr <number of runs>
     runid = args.run_id  # -id <which TPS run>
-    run_ops(in_path, filename, pdbfile, trajfile, outpath, nsteps, runid)
+
+    WALLTIME = 3600  # seconds
+    process = Process(target=run_ops, args=(in_path, filename, pdbfile, trajfile, outpath, nsteps, runid, WALLTIME))
+    process.start()
+
+    process.join(WALLTIME)
+
+    if process.is_alive():
+        print('TPS run timed out!')

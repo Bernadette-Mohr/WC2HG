@@ -1,4 +1,5 @@
 import sys
+import os
 import argparse
 from pathlib import Path
 from openmm import app
@@ -7,7 +8,8 @@ import mdtraj as md
 from pathsampling_utilities import PathsamplingUtilities
 from metadynamics_setup import MetadynamicsSimulation
 
-sys.path.append('')
+libdir = os.path.expanduser('/home/bmohr98/micromamba/envs/ops/lib/python3.9/site-packages/')
+sys.path.append(libdir)
 
 
 def run_metadynamics_simulation(input_dir=None, config_file=None, plumed_file=None, pdb_file=None,
