@@ -1,7 +1,6 @@
 import sys
 import argparse
 from pathlib import Path
-import configparser
 from openmm import app
 from openmmplumed import PlumedForce
 import mdtraj as md
@@ -19,9 +18,7 @@ def run_metadynamics_simulation(input_dir=None, config_file=None, plumed_file=No
     print('Building system...')
     utils: PathsamplingUtilities = PathsamplingUtilities()
     config_file, plumed_file, pdb_file = utils.get_inputs(config_file, plumed_file, pdb_file, input_path=input_dir)
-    configs = configparser.ConfigParser()
-    configs.optionxform = str
-    configs.read(config_file)
+    configs = utils.get_configs(config_file)
 
     setup = MetadynamicsSimulation(configs=configs, forcefield_list=ff_list, pdb_file=pdb_file, system_name=system_name,
                                    output_path=output_dir)
