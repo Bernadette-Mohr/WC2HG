@@ -1,5 +1,5 @@
 import openmm as mm
-print(mm.__version__)
+# print(mm.__version__)
 from openmm import app
 from openmm import unit
 from pathsampling_utilities import PathsamplingUtilities
@@ -33,10 +33,21 @@ class MetadynamicsSimulation:
         self.barostatInterval = configs['INTEGRATOR'].getint('barostatInterval')
         self.friction = configs['INTEGRATOR'].getfloat('friction') / self.time_unit
         self.dt = configs['INTEGRATOR'].getfloat('dt') * self.time_unit
-        self.platform = mm.Platform.getPlatformByName(configs['PLATFORM']['platform'])
-        self.platformProperties = {key: configs['PLATFORM_PROPERTIES'][key]
-                                   for key in configs['PLATFORM_PROPERTIES']}
-        print(self.platformProperties)
+        if configs['PLATFORM']['platform']:
+            self.platform = mm.Platform.getPlatformByName(configs['PLATFORM']['platform'])
+            for (key, val) in configs['PLATFORM_PROPERTIES'].items():
+                properties = False
+                if val:
+                    properties = True
+            if properties:
+                self.platformProperties = {key: configs['PLATFORM_PROPERTIES'][key]
+                                           for key in configs['PLATFORM_PROPERTIES']}
+            else:
+                self.platformProperties = None
+        else:
+            self.platform = None
+            self.platformProperties = None
+
         self.equilibrationSteps = configs['SIMULATION'].getint('equilibrationSteps')
         self.steps = configs['SIMULATION'].getint('steps')
         self.reportInterval = configs['SIMULATION'].getint('reportInterval')
@@ -70,8 +81,12 @@ class MetadynamicsSimulation:
         return integrator
 
     def setup_simulation(self):
-        simulation = app.Simulation(self.topology, self.system, self.__setup_integrator(), self.platform,
-                                    self.platformProperties)
+        if self.platform:
+            simulation = app.Simulation(self.topology, self.system, self.__setup_integrator(), self.platform,
+                                        self.platformProperties)
+        else:
+            simulation = app.Simulation(self.topology, self.system, self.__setup_integrator())
+
         simulation.context.setPositions(self.positions)
 
         return simulation
