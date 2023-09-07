@@ -102,7 +102,7 @@ def run_ops(input_path, file_name, pdb_file, traj_file, out_path, n_steps, run_i
 
         openmm_properties = {'Precision': 'mixed'}  # 'DeviceIndex': '0'
         options = {
-            'n_steps_per_frame': 2500,  # number of integration steps per frame of the template trajectory
+            'n_steps_per_frame': 50,  # number of internal time steps per saved frame (snapshot)
             'n_frames_max': 4000  # maximum number of frames to store in the snapshot engine
         }
 
@@ -161,7 +161,7 @@ def run_ops(input_path, file_name, pdb_file, traj_file, out_path, n_steps, run_i
         network = paths.TPSNetwork(initial_states=WC, final_states=HG).named('tps_network')
 
         print("Initial conformation")
-        plt.plot(d_WC(ops_trj), d_HG(ops_trj), color='k', label='Stable states')
+        plt.plot(d_WC(ops_trj), d_HG(ops_trj), 'k.', label='Stable states')
         plt.legend()
         plt.xlabel("Hydrogen bond distance WC")
         plt.ylabel("Hydrogen bond distance HG")
@@ -174,8 +174,8 @@ def run_ops(input_path, file_name, pdb_file, traj_file, out_path, n_steps, run_i
         for ens in network.analysis_ensembles:
             subtrajectories += ens.split(ops_trj)
 
-        for subtrajectory in subtrajectories[0]:
-            plt.plot(d_WC(subtrajectory), d_HG(subtrajectory), color='r', label='State transitions')
+        # for subtrajectory in subtrajectories[0]:
+        plt.plot(d_WC(subtrajectories[0]), d_HG(subtrajectories[0]), color='r', label='State transitions')
         plt.legend()
         plt.xlabel("Hydrogen bond distance WC")
         plt.ylabel("Hydrogen bond distance HG")
@@ -185,7 +185,7 @@ def run_ops(input_path, file_name, pdb_file, traj_file, out_path, n_steps, run_i
         # Move scheme
         scheme = paths.OneWayShootingMoveScheme(network=network,
                                                 selector=paths.UniformSelector(),
-                                                engine=md_engine)
+                                                engine=md_engine).named('move_scheme')
 
         # Initial conditions
         initial_conditions = scheme.initial_conditions_from_trajectories(subtrajectories)

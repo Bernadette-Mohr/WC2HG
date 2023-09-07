@@ -33,7 +33,7 @@ def plot_path_tree(steps):
     tree.options.css['scale_x'] = 0.2
     # tree.options.ui['legends'] = ['step', 'active']
     cairosvg.svg2pdf(bytestring=tree.svg(), output_width=None, output_height=None,
-                     write_to='/media/bmohr/Backup/POSTDOC/WCHG/TPS/DNAWC/DNAWC_100fs_pathtree.pdf', dpi=300)
+                     write_to='/media/bmohr/Backup/POSTDOC/WCHG/TPS/DNAWC2MAT/DNAWC2MAT_100fs_pathtree.pdf', dpi=300)
 
 
 def plot_path_lengths(steps):
@@ -41,12 +41,12 @@ def plot_path_lengths(steps):
     plt.hist(path_lengths, bins=40, alpha=0.5)
     plt.ylabel("Count")
     plt.xlabel("Path length (Frames)")
-    plt.savefig('/media/bmohr/Backup/POSTDOC/WCHG/TPS/DNAWC/DNAWC_100fs_path-lengths.pdf', dpi=300)
+    plt.savefig('/media/bmohr/Backup/POSTDOC/WCHG/TPS/DNAWC2MAT/DNAWC2MAT_100fs_path-lengths.pdf', dpi=300)
 
 
 def analyze_tps_runs():
     # storage = paths.AnalysisStorage('/media/bmohr/Backup/POSTDOC/WCHG/TPS/DNAWC/DNAWC_TEST.nc')
-    storage = Storage('/media/bmohr/Backup/POSTDOC/WCHG/TPS/DNAWC/DNAWC_DNAWC_100fs.db', mode='r')
+    storage = Storage('/media/bmohr/Backup/POSTDOC/WCHG/TPS/DNAWC2MAT/DNAWC2MAT_n_steps_50.db', mode='r')
     scheme = storage.schemes[0]
     steps = list()
     for idx in tqdm(range(200)):
