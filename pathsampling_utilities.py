@@ -1,6 +1,5 @@
 import configparser
 from pathlib import Path
-
 import h5py
 import openmm as mm
 
@@ -11,9 +10,10 @@ class PathsamplingUtilities:
         self.file_names = list()
         self.plumed_script = str()
         self.configs = None
+        self.velocities = None
         self.sliced_trajectory = None
 
-    def get_inputs(self, *args: str, input_path: Path = None) -> list:
+    def get_inputs(self, *args: str, cyc_no: int = None, input_path: Path = None) -> list:
         self.file_names = [name for name in args]
         for idx, file_name in enumerate(self.file_names):
             try:
@@ -23,6 +23,28 @@ class PathsamplingUtilities:
                     pass
             except FileNotFoundError:
                 print(f'File {self.file_names[idx]} not found!')
+            if (Path(self.file_names[idx])).suffix == '*.db' and cyc_no:
+                import openpathsampling as paths
+                from openpathsampling.experimental.storage import monkey_patch_all
+                paths = monkey_patch_all(paths)
+                paths.InterfaceSet.simstore = True
+                from openpathsampling.experimental.storage import Storage
+                storage = Storage(str(file_name), 'r')
+                self.file_names[idx] = storage.steps[cyc_no].active[0].trajectory
+                cvs = dict()
+                for cv in storage.storable_functions:
+                    cvs[cv.name] = cv
+                network = storage.networks[0]
+                engine = storage.engines[2]
+                template = None
+                scheme = None
+                for obj in storage.simulation_objects:
+                    if obj.name == '[MDTrajTopology]':
+                        template = obj
+                    elif obj.name == '[OneWayShootingMoveScheme]':
+                        scheme = obj
+                self.file_names.extend([cvs, network, engine, template, scheme])
+                storage.close()
 
         return self.file_names
 
@@ -41,6 +63,16 @@ class PathsamplingUtilities:
     def write_xml(self, filename, object_):
         with open(filename, mode='w') as self.file_:
             self.file_.write(mm.XmlSerializer.serialize(object_))
+
+    def extract_velocities(self, filename, start=0, stop=None):
+        with h5py.File(filename, "r") as file_:
+            self.velocities = file_['velocities'][()]  # returns data as a numpy array
+            if stop:
+                self.velocities = self.velocities[start:stop]
+            else:
+                self.velocities = self.velocities[start:]
+
+        return self.velocities
 
     def slice_trajectory(self, filename, new_name, start=0, stop=-1):
         try:
