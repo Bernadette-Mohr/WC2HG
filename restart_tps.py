@@ -1,46 +1,81 @@
-import os
-import sys
-# libdir = os.path.expanduser('/home/jvanasselt/miniconda3/envs/tps/lib/python3.9/site-packages/')
-# sys.path.append(libdir)
-
 import argparse
 from pathlib import Path
-import numpy as np
+import logging.config
+from multiprocessing import Process
+import time
 
-import mdtraj as md
 import openpathsampling as paths
-from openpathsampling.engines import gromacs as ops_gmx
+from openpathsampling.experimental.storage import monkey_patch_all
+paths = monkey_patch_all(paths)
+paths.InterfaceSet.simstore = True
+from openpathsampling.experimental.storage import Storage
+
+logging.config.fileConfig('logging.conf', disable_existing_loggers=False)
+
+# interface = 4
+# logging.config.fileConfig('logging.conf',
+#                           defaults={'initfilename': f'tis_init_{interface}.log',
+#                                     'logfilename': f'tis_output_{interface}.log'},
+#                           disable_existing_loggers=False)
 
 
-def restart_tps(directory, filename, n_runs):
+def restart_tps(directory, filename, n_runs, walltime):
+    start_time = time.time()  # Time at the start of this process
     try:
         if filename.is_file():
-            storage = paths.Storage(str(filename), 'a')
+            storage = Storage(str(filename), 'a')
         else:
             filename = directory / filename
-            storage = paths.Storage(str(filename), 'a')
+            storage = Storage(str(filename), 'a')
     except FileNotFoundError:
         print('OPS storage file not found. Is it in the IO-directory or did you provide an absolute file path?')
 
-    sampler = storage.pathsimulators[0]
-    sampler.storage = storage
-    engine = storage.engines[0]
+    runtime = True
+    while runtime:
+        elapsed_time = time.time() - start_time
+        if elapsed_time > walltime:
+            storage.close()
+            runtime = False
 
-    n_steps = len(storage.steps) - 1
+        sampler = storage.pathsimulators[0]
+        sampler.storage = storage
 
-    engine.filename_setter.count = n_steps
-    sampler.restart_at_step(storage.steps[-1])
-    sampler.run(n_runs - n_steps)
-    storage.close()
+        step = -1
+        while True:
+            try:
+                sampler.restart_at_step(storage.steps[step])
+            except KeyError:
+                print(f'KeyError at step {step} in {filename}. Trying previous step.')
+                step -= 1
+                continue
+            else:
+                break
+
+        n_steps = storage.steps[step].mccycle
+        sampler.run(n_runs - n_steps)
+        print(storage.summary())
+        storage.close()
+        runtime = False
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser('Restart an unfinished TPS calculation from the last *.nc file.')
+    parser = argparse.ArgumentParser('Restart an unfinished TPS calculation from the last step in a *.db file.')
     parser.add_argument('-dir', '--directory', type=Path, required=True, help='Directory for storing TPS input and '
                                                                               'output.')
-    parser.add_argument('-f', '--filename', type=Path, required=True, help='Filename of the *.nc storage file for '
+    parser.add_argument('-f', '--filename', type=Path, required=True, help='Filename of the *.db storage file for '
                                                                            'restarting.')
-    parser.add_argument('-nr', '--n_steps', type=int, required=True, help='The original number of TPS runs.')
+    parser.add_argument('-nr', '--n_runs', type=int, required=True, help='The original number of required TPS runs.')
+    parser.add_argument('-wt', '--walltime', type=int, required=True,
+                        help='WALLTIME of the cluster minus 30 mins to allow closing of the storage object.')
 
     args = parser.parse_args()
-    restart_tps(args.directory, args.filename, args.n_runs)
+
+    process = Process(target=restart_tps, args=(args.directory, args.filename, args.n_runs, args.walltime))
+    process.start()
+
+    process.join(args.walltime)
+
+    if process.is_alive():
+        print('TPS run timed out!')
+        process.join(120)  # wait 2 minutes for the process to finish closing storage file
+        process.terminate()

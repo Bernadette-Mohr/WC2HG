@@ -23,28 +23,27 @@ class PathsamplingUtilities:
                     pass
             except FileNotFoundError:
                 print(f'File {self.file_names[idx]} not found!')
-            if (Path(self.file_names[idx])).suffix == '*.db' and cyc_no:
-                import openpathsampling as paths
-                from openpathsampling.experimental.storage import monkey_patch_all
-                paths = monkey_patch_all(paths)
-                paths.InterfaceSet.simstore = True
-                from openpathsampling.experimental.storage import Storage
-                storage = Storage(str(file_name), 'r')
-                self.file_names[idx] = storage.steps[cyc_no].active[0].trajectory
-                cvs = dict()
-                for cv in storage.storable_functions:
-                    cvs[cv.name] = cv
-                network = storage.networks[0]
-                engine = storage.engines[2]
-                template = None
-                scheme = None
-                for obj in storage.simulation_objects:
-                    if obj.name == '[MDTrajTopology]':
-                        template = obj
-                    elif obj.name == '[OneWayShootingMoveScheme]':
-                        scheme = obj
-                self.file_names.extend([cvs, network, engine, template, scheme])
-                storage.close()
+        if Path(self.file_names[0]).suffix == '.db' and cyc_no:
+            from openpathsampling.experimental.storage import Storage
+            storage = Storage(self.file_names[0], 'r')
+            self.file_names[0] = storage.steps[cyc_no].active[0].trajectory
+            cvs = dict()
+            for cv in storage.storable_functions:
+                cvs[cv.name] = cv
+            network = storage.networks[0]
+            template = None
+            scheme = None
+            for obj in storage.simulation_objects:
+                if obj.name == '[MDTrajTopology]':
+                    template = obj
+                elif obj.name == '[OneWayShootingMoveScheme]':
+                    scheme = obj
+            # [cvs, network, engine, template, scheme]
+            self.file_names.append(cvs)
+            self.file_names.append(network)
+            self.file_names.append(template)
+            self.file_names.append(scheme)
+            storage.close()
 
         return self.file_names
 

@@ -23,6 +23,7 @@ from openpathsampling.experimental.storage import monkey_patch_all
 from openpathsampling.experimental.storage.collective_variables import MDTrajFunctionCV
 from openpathsampling.experimental.storage import Storage
 
+
 paths = monkey_patch_all(paths)
 import mdtraj as md
 
@@ -101,24 +102,24 @@ def run_ops(input_path, file_name, pdb_file, traj_file, out_path, n_steps, run_i
         # openmm_top = MDTrajTopology(topology)
 
         openmm_properties = {'Precision': 'mixed'}  # 'DeviceIndex': '0'
-        options = {
-            'n_steps_per_frame': 50,  # number of internal time steps per saved frame (snapshot)
+        ops_options = {
+            'n_steps_per_frame': 2500,  # number of internal time steps per saved frame (snapshot)
             'n_frames_max': 4000  # maximum number of frames to store in the snapshot engine
         }
 
         # OPS snapshot file (Not equivalent to OpenMM PDBFile!?)
-        template = ops_openmm.snapshot_from_pdb(pdb_file=pdb_file)
+        ops_template = ops_openmm.snapshot_from_pdb(pdb_file=pdb_file)
         md_engine = ops_openmm.Engine(
-            topology=template.topology,
+            topology=ops_template.topology,
             system=system,
             integrator=integrator,
             openmm_properties=openmm_properties,
-            options=options
+            options=ops_options
         ).named('OMM_engine')
         # md_engine._simulation = mm.app.Simulation(pdb.topology, system, integrator)
         # md_engine._simulation.context.setPositions(pdb.positions)
         md_engine.initialize(mm.openmm.Platform.getPlatformByName('CUDA'))
-        md_engine.current_snapshot = template
+        md_engine.current_snapshot = ops_template
 
         bondlist = list()
         bondlist.append(topology.select('name N1 and resid 6 or name N3 and resid 16'))  # WC
@@ -128,11 +129,11 @@ def run_ops(input_path, file_name, pdb_file, traj_file, out_path, n_steps, run_i
         ha = topology.select('name "H3" and resid 16')[0]
 
         # Collective Variable
-        d_WC = MDTrajFunctionCV(md.compute_distances, topology=template.topology, atom_pairs=[bondlist[0]]).named(
+        d_WC = MDTrajFunctionCV(md.compute_distances, topology=ops_template.topology, atom_pairs=[bondlist[0]]).named(
             'd_WC')
-        d_HG = MDTrajFunctionCV(md.compute_distances, topology=template.topology, atom_pairs=[bondlist[1]]).named(
+        d_HG = MDTrajFunctionCV(md.compute_distances, topology=ops_template.topology, atom_pairs=[bondlist[1]]).named(
             'd_HG')
-        d_BP = MDTrajFunctionCV(md.compute_distances, topology=template.topology, atom_pairs=[bondlist[2]]).named(
+        d_BP = MDTrajFunctionCV(md.compute_distances, topology=ops_template.topology, atom_pairs=[bondlist[2]]).named(
             'd_BP')
 
         # a_hg = MDTrajFunctionCV("a_hg", md.compute_angles, template.topology,
@@ -194,13 +195,13 @@ def run_ops(input_path, file_name, pdb_file, traj_file, out_path, n_steps, run_i
         print('Start TPS production run')
 
         # Storage
-        storage.save(template)
+        storage.save(ops_template)
         storage.save(ops_trj)
         storage.save(initial_conditions)
 
         sampler = paths.PathSampling(storage=storage,
                                      move_scheme=scheme,
-                                     sample_set=initial_conditions).named('TPS_WC2HG')
+                                     sample_set=initial_conditions).named('TPS_sampler')
 
         logging.config.fileConfig(f'logging.conf', disable_existing_loggers=False)
 
