@@ -43,14 +43,14 @@ def filter_trials(dir_path, dir_name, new_name):
                 new_storage.save(obj)
             first_storage.close()
         else:
-            print('Resuming...')
             resumed = True
+            print(f'Resuming: {resumed}')
             new_storage = Storage(filename=f'{dir_path}/{db_name}', mode='a')
         
         old_cycle = 0
         for file_idx, fname in enumerate(storage_files):
             storage = Storage(filename=f'{fname}', mode='r')
-            weights_file = Path(f'{dir_path}/{new_name}_{dir_idx}_weights.pkl')
+            weights_file = Path(f'{dir_path}/{new_name}_weights.pkl')
             if weights_file.is_file():
                 with open(weights_file, 'rb') as infile:
                     weights_dict = pickle.load(infile)

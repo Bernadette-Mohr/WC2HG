@@ -67,7 +67,7 @@ def get_atoms_per_residue(traj, protein=False, chain=None, pairing_idx=None, sin
         return nucleic_dict
 
 
-def generate_contact_map(dir_path, dir_name, configs):
+def generate_contact_map(dir_path, dir_name, out_dir, out_name, configs):
     utils = PathsamplingUtilities()
     configs = utils.get_configs(configs)
     single_residue = configs['SELECTION'].get('residue_key')
@@ -109,10 +109,10 @@ def generate_contact_map(dir_path, dir_name, configs):
     total_contacts /= np.array(n_trajs)
     contact_matrix /= np.array(n_trajs)
     distance_matrix /= np.array(n_trajs)
-    contact_matrix = np.mean(contact_matrix, axis=0)
-    distance_matrix = np.mean(distance_matrix, axis=0)
+    # contact_matrix = np.mean(contact_matrix, axis=0)
+    # distance_matrix = np.mean(distance_matrix, axis=0)
 
-    with open('contact_map_all_bound.pkl', 'wb') as file_:
+    with open(out_dir / f'{out_name}.pkl', 'wb') as file_:
         pickle.dump({'amino_acids': amino_acids, 'nucleic_acids': nucleic_acids, 'total_contacts': total_contacts,
                      'contact_matrix': contact_matrix, 'distance_matrix': distance_matrix}, file_)
 
@@ -191,12 +191,18 @@ if __name__ == '__main__':
                         help='Base path to trajectory directories')
     parser.add_argument('-t', '--traj_dir_name', type=str, required=True,
                         help='Name of trajectory directories')
+    parser.add_argument('-od', '--output_dir', type=str, required=True,
+                        help='Path to output directory.')
+    parser.add_argument('-of', '--output_file', type=str, required=True,
+                        help='Name of output file.')
     parser.add_argument('-cfg', '--config_file', type=str, required=True,
                         help='File in python configparser format with simulation settings.')
     args = parser.parse_args()
 
     base_path = Path(args.base_path)
     traj_dir_name = args.traj_dir_name
+    output_dir = Path(args.output_dir)
+    output_file = args.output_file
     config_file = args.config_file
 
-    generate_contact_map(base_path, traj_dir_name, config_file)
+    generate_contact_map(base_path, traj_dir_name, output_dir, output_file, config_file)

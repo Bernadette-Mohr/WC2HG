@@ -47,13 +47,18 @@ class ContactCount:
 
     def smooth_contact(self, r):
         # Compute contact based on distance smoothing function
-        return (1 - ((r - self.d0) / self.r0) ** self.nn) / (1 - ((r - self.d0) / self.r0) ** self.mm)
+        np.seterr(divide='ignore', invalid='ignore')
+        try:
+            return (1 - ((r - self.d0) / self.r0) ** self.nn) / (1 - ((r - self.d0) / self.r0) ** self.mm)
+        except RuntimeWarning:
+            return np.nan
 
     def compute_contacts(self):
         # Check where first condition holds
         ones = np.where(self.distances - self.d0 <= 0)
         # Apply second condition
         contacts = np.where(self.distances - self.d0 >= 0, self.smooth_contact(self.distances), self.distances)
+        np.seterr(divide='warn', invalid='warn')
         # Apply second condition (...)
         contacts[ones] = np.ones(ones[0].shape)
         return contacts
