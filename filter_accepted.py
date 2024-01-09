@@ -21,7 +21,6 @@ def wrapper(gen, fname, start, len_db):
 
 def filter_trials(dir_path, dir_name, new_name):
     """Needs testing for correctness.
-       Automatically assumes md_trr as the target folder.
 
        Parameters:
        -----------
@@ -31,27 +30,34 @@ def filter_trials(dir_path, dir_name, new_name):
        new_name: the name of the .db file that will contain all accpted paths."""
 
     storage_dirs = sorted(dir_path.glob(f'{dir_name}*'))
+    resumed = False
     for dir_idx, dir_ in enumerate(storage_dirs):
         storage_files = sorted(dir_.glob('*.db'))
-        try:
-            db_name = f'{new_name}_{dir_idx}.db'
-            if not Path(dir_path / db_name).is_file():
-                new_storage = Storage(filename=f'{dir_path}/{db_name}', mode='w')
-                weights_dict = dict()
-                first_storage = Storage(filename=f'{sorted(dir_.glob("*.db"))[0]}', mode='r')
-                for cv in tqdm(first_storage.storable_functions, desc='Preloading cache'):
-                    cv.preload_cache()
-                for obj in tqdm(first_storage.simulation_objects, desc='Copying simulation objects'):
-                    new_storage.save(obj)
-                first_storage.close()
-
-        except FileExistsError:
-            print('File with that name exists, choose a unique name!')
-            pass
-
+        db_name = f'{new_name}.db'
+        if not Path(dir_path / db_name).is_file():
+            new_storage = Storage(filename=f'{dir_path}/{db_name}', mode='w')
+            first_storage = Storage(filename=f'{sorted(dir_.glob("*.db"))[0]}', mode='r')
+            for cv in tqdm(first_storage.storable_functions, desc='Preloading cache'):
+                cv.preload_cache()
+            for obj in tqdm(first_storage.simulation_objects, desc='Copying simulation objects'):
+                new_storage.save(obj)
+            first_storage.close()
+        else:
+            print('Resuming...')
+            resumed = True
+            new_storage = Storage(filename=f'{dir_path}/{db_name}', mode='a')
+        
         old_cycle = 0
         for file_idx, fname in enumerate(storage_files):
             storage = Storage(filename=f'{fname}', mode='r')
+            weights_file = Path(f'{dir_path}/{new_name}_{dir_idx}_weights.pkl')
+            if weights_file.is_file():
+                with open(weights_file, 'rb') as infile:
+                    weights_dict = pickle.load(infile)
+                    old_cycle = list(sorted(weights_dict.keys()))[-1]
+            else:
+                print('First file in for loop?')
+                weights_dict = dict()
 
             print("File: {0} for {1} steps, {2} snapshots".format(
                 fname.name,
@@ -60,7 +66,7 @@ def filter_trials(dir_path, dir_name, new_name):
             ))
 
             start = 0
-            if file_idx == 0:
+            if not resumed and file_idx == 0:
                 start = 1
                 len_db = len(storage.steps)
             else:
@@ -68,20 +74,22 @@ def filter_trials(dir_path, dir_name, new_name):
 
             steps = wrapper(storage.steps, fname, start, len_db)
             for step in steps:
-                if step.change.accepted:
-                    new_cycle = step.mccycle
-                    weights_dict[new_cycle] = new_cycle - old_cycle
-                    old_cycle = new_cycle
-                    new_storage.save(step)
+                if resumed and step.mccycle <= old_cycle:
+                    continue
+                else:
+                    if step.change.accepted:
+                        new_cycle = step.mccycle
+                        weights_dict[new_cycle] = new_cycle - old_cycle
+                        old_cycle = new_cycle
+                        new_storage.save(step)
             
+            # Save weights dict
+            with open(weights_file, 'wb') as f:
+                pickle.dump(weights_dict, f, pickle.HIGHEST_PROTOCOL)
+
             new_storage.sync_all()
+            new_storage.close()
             storage.close()
-
-        # Save weights dict
-        with open(f'{dir_path}/{new_name}_{dir_idx}_weights.pkl', 'wb') as f:
-            pickle.dump(weights_dict, f, pickle.HIGHEST_PROTOCOL)
-
-        new_storage.close()
 
 
 if __name__ == '__main__':
