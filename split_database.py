@@ -9,8 +9,8 @@ paths.InterfaceSet.simstore = True
 from openpathsampling.experimental.storage import Storage
 
 
-def chunks(lst, n):
-    """Yield successive n-sized chunks from lst."""
+def chunk_list(lst, n):
+    """Yield successive n-sized chunks from a list."""
     for i in range(0, len(lst), n):
         yield lst[i:i + n]
 
@@ -22,18 +22,21 @@ def wrapper(gen, fname, chunk):
         except StopIteration:
             break
         except Exception as e:
-            print(f'Unable to load step {idx} from {fname}: {e.__class__}: {e}')
+            print(f'Unable to load step {idx} from {fname}.db: {e.__class__}: {e}')
 
 
-def split_database(directory, db_name, n_chunks):
-    storage = Storage(filename=f'{directory}/{db_name}', mode='r')
+def split_database(directory, db_name, l_chunks):
+    if Path(db_name).suffix == '.db':
+        db_name = Path(db_name).stem
+    storage = Storage(filename=f'{directory}/{db_name}.db', mode='r')
     len_db = len(storage.steps) + 1
     print(f'Length of database: {len_db}')
-    db_chunks = chunks(range(len_db), n_chunks)
-    for idx, chunk in db_chunks:
+    db_chunks = chunk_list(range(len_db), l_chunks)
+    print(db_chunks)
+    for idx, chunk in enumerate(db_chunks):
         new_storage = Storage(filename=f'{directory}/{db_name}_{idx}.db', mode='w')
         steps = wrapper(storage.steps, db_name, chunk)
-        for step in tqdm(steps, desc=f'Copying steps'):
+        for step in steps:
             new_storage.save(step)
         new_storage.close()
     storage.close()
@@ -45,11 +48,11 @@ if __name__ == '__main__':
                         help='Directory for storing TPS input and output.')
     parser.add_argument('-fn', '--file_name', type=str, required=True,
                         help='Name of the database file to be split into chunks.')
-    parser.add_argument('-n', '--number_of_chunks', type=str, required=True,
+    parser.add_argument('-l', '--length_of_chunks', type=int, required=True,
                         help='Name of the new OPS database file with all accepted trials.')
 
     args = parser.parse_args()
     source_dir = args.directory
     file_name = args.file_name
-    number_of_chunks = args.number_of_chunks
-    split_database(source_dir, file_name, number_of_chunks)
+    length_of_chunks = args.length_of_chunks
+    split_database(source_dir, file_name, length_of_chunks)
