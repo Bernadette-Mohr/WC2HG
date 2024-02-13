@@ -1,4 +1,5 @@
 import argparse
+import sys
 from pathlib import Path
 import pickle
 from tqdm.auto import tqdm
@@ -9,9 +10,9 @@ paths.InterfaceSet.simstore = True
 from openpathsampling.experimental.storage import Storage
 
 
-def chunk_list(lst, n):
+def chunk_list(lst, n, start_idx=0):
     """Yield successive n-sized chunks from a list."""
-    for i in range(0, len(lst), n):
+    for i in range(start_idx, len(lst), n):
         yield lst[i:i + n]
 
 
@@ -25,20 +26,28 @@ def wrapper(gen, fname, chunk):
             print(f'Unable to load step {idx} from {fname}.db: {e.__class__}: {e}')
 
 
-def split_database(directory, db_name, l_chunks):
+def split_database(directory, db_name, l_chunks, start_idx):
     if Path(db_name).suffix == '.db':
         db_name = Path(db_name).stem
     storage = Storage(filename=f'{directory}/{db_name}.db', mode='r')
     len_db = len(storage.steps) + 1
     print(f'Length of database: {len_db}')
-    db_chunks = chunk_list(range(len_db), l_chunks)
-    print(db_chunks)
+    db_chunks = chunk_list(range(len_db), l_chunks, start_idx)
+    # print(*db_chunks)
+    # sys.exit()
+
     for idx, chunk in enumerate(db_chunks):
-        new_storage = Storage(filename=f'{directory}/{db_name}_{idx}.db', mode='w')
-        steps = wrapper(storage.steps, db_name, chunk)
-        for step in steps:
-            new_storage.save(step)
-        new_storage.close()
+        """
+         Needs testing: Automatic adjustment of file index in case of restart.
+        """
+        if start_idx > 0:
+            idx += int(start_idx / l_chunks)
+        print(idx)
+        # new_storage = Storage(filename=f'{directory}/{db_name}_{idx}.db', mode='w')
+        # steps = wrapper(storage.steps, db_name, chunk)
+        # for step in steps:
+        #     new_storage.save(step)
+        # new_storage.close()
     storage.close()
 
 
@@ -50,9 +59,12 @@ if __name__ == '__main__':
                         help='Name of the database file to be split into chunks.')
     parser.add_argument('-l', '--length_of_chunks', type=int, required=True,
                         help='Name of the new OPS database file with all accepted trials.')
+    parser.add_argument('-s', '--start', type=int, required=False, default=0,
+                        help='Start index for splitting in case of restart.')
 
     args = parser.parse_args()
     source_dir = args.directory
     file_name = args.file_name
     length_of_chunks = args.length_of_chunks
-    split_database(source_dir, file_name, length_of_chunks)
+    start = args.start
+    split_database(source_dir, file_name, length_of_chunks, start)

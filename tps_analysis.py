@@ -28,14 +28,17 @@ def plot_path_tree(storage):
     print('Decorrelated paths', len(tree.generator.decorrelated))
     cycles = *map(tree.steps.get_mccycle, tree.generator.decorrelated),
     print('Cycles with decorrelated paths', cycles)
+    # lengths = {cycle: len(storage.steps[cycle].active[0].trajectory) for cycle in cycles}
+    lengths = {cycle: len(storage.steps[cycle].active[0].trajectory) for cycle in range(len(cycles))}
+    print('Lengths of decorrelated paths', lengths)
     print(f'Average of {1.0 * (cycles[-1] - cycles[0]) / (len(cycles) - 1)} cycles per decorrelated sample')
 
-    tree.options.css['scale_x'] = 0.2
-    tree.__annotations__
-    # tree.options.ui['legends'] = ['step', 'active']
-    cairosvg.svg2pdf(bytestring=tree.svg(), output_width=None, output_height=None,
-                     write_to='/media/bmohr/Backup/POSTDOC/WCHG/TPS/DNAWC2MAT/DNAWC2MAT_continued_10_pathtree.pdf',
-                     dpi=300)
+    # tree.options.css['scale_x'] = 0.2
+    # tree.__annotations__
+    # # tree.options.ui['legends'] = ['step', 'active']
+    # cairosvg.svg2pdf(bytestring=tree.svg(), output_width=None, output_height=None,
+    #                  write_to='/media/bmohr/Backup/POSTDOC/WCHG/TPS/DNAWC2MAT/DNAWC2MAT_continued_10_pathtree.pdf',
+    #                  dpi=300)
 
 
 def plot_path_lengths(storage):
@@ -48,7 +51,7 @@ def plot_path_lengths(storage):
 
 def analyze_tps_runs():
     # storage = paths.AnalysisStorage('/media/bmohr/Backup/POSTDOC/WCHG/TPS/DNAWC/DNAWC_TEST.nc')
-    storage = Storage('/media/bmohr/Backup/POSTDOC/WCHG/TPS/DNAWC2MAT/MC_10/DNAWC2MAT_continued_10.db', mode='r')
+    storage = Storage('/media/bmohr/Backup/POSTDOC/WCHG/TPS/DNAWC2MAT/', mode='r')
     scheme = storage.schemes[0]
     # steps = list()
     # for idx in tqdm(range(200)):
@@ -56,7 +59,7 @@ def analyze_tps_runs():
     # print(storage.schemes[1].move_summary(steps))  # why are there two schemes stored, but the second is empty?
 
     scheme.move_summary(storage.steps)  # just returns some statistics
-    plot_path_lengths(storage)
+    # plot_path_lengths(storage)
     plot_path_tree(storage)
 
 

@@ -8,8 +8,8 @@ import seaborn as sns
 sns.set(style='whitegrid', palette='deep', context='paper', font_scale=1.8)
 
 
-def plot_contact_map(pickle_file, xname, yname, file_name, output_path):
-    with open(output_path / pickle_file, 'rb') as file_:
+def plot_contact_map(pickle_files, xname, yname, file_name, output_path):
+    with open(output_path / pickle_files, 'rb') as file_:
         data = pickle.load(file_)
         amino_acids = data['amino_acids']
         nucleic_acids = data['nucleic_acids']
@@ -59,7 +59,7 @@ def plot_contact_map(pickle_file, xname, yname, file_name, output_path):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-p', '--pickle_file', type=str, required=True,
+    parser.add_argument('-p', '--pickle_files', type=str, required=True,
                         help='Pickle file containing the contact matrices.')
     parser.add_argument('-x', '--xname', type=str, required=True,
                         help='Name of the x-axis.')

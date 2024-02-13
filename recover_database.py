@@ -3,7 +3,6 @@ import argparse
 from pathlib import Path
 from tqdm.auto import tqdm
 import openpathsampling as paths
-from mueller_brown_potential import MuellerBrown
 from openpathsampling.experimental.storage import monkey_patch_all
 paths = monkey_patch_all(paths)
 paths.InterfaceSet.simstore = True

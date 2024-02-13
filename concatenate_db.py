@@ -10,7 +10,9 @@ from openpathsampling.experimental.storage import Storage
 
 
 def concatenate_runs(dir_path, db_list, new_file_name):
-    big_db = None
+    if Path(new_file_name).suffix == '.db':
+        new_file_name = Path(new_file_name).stem
+
     for db in db_list:
         try:
             if Path(dir_path / db).is_file():
@@ -21,7 +23,8 @@ def concatenate_runs(dir_path, db_list, new_file_name):
             print('OPS storage file not found. Is it in the IO-directory or did you provide an absolute file path?')
 
         if not big_db:
-            big_db = Storage(str(dir_path / new_file_name), 'w')
+            big_db_name = f'{dir_path}/{new_file_name}.db'
+            big_db = Storage(str(), 'w')
             for cv in tqdm(storage.storable_functions, desc='Preloading cache'):
                 cv.preload_cache()
             for obj in tqdm(storage.simulation_objects, desc='Copying simulation objects'):
