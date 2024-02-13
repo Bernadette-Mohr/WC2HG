@@ -2,6 +2,7 @@ import configparser
 from pathlib import Path
 import h5py
 import openmm as mm
+from tqdm.auto import tqdm
 
 
 class PathsamplingUtilities:
@@ -93,3 +94,15 @@ class PathsamplingUtilities:
             self.sliced_trajectory.close()
         except ValueError:
             print('File exists, choose new name or delete old file!')
+
+    @staticmethod
+    def wrapper(gen, fname, start=0, len_db=None):
+        if not len_db:
+            len_db = len(list(gen))
+        for idx in tqdm(range(start, len_db), desc=f'Reading steps'):
+            try:
+                yield gen[idx]
+            except StopIteration:
+                break
+            except Exception as e:
+                print(f'Unable to load step {idx} from {fname}: {e.__class__}: {e}')

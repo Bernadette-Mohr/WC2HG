@@ -4,6 +4,7 @@
     <selectedOptions>
       <option name="py.script.parameters" />
     </selectedOptions>
+    <option name="ENV_FILES" value="" />
     <option name="INTERPRETER_OPTIONS" value="" />
     <option name="PARENT_ENVS" value="true" />
     <envs>

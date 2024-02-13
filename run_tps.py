@@ -102,14 +102,12 @@ def run_ops(input_path=None, file_name=None, pdb_file=None, traj_file=None, cyc_
         else:
             traj, cvs, network, engine, ops_template, scheme = utils.get_inputs(traj_file, cyc_no=cyc_no,
                                                                                 input_path=input_path)
-            md_engine = engine
             template = ops_template
             d_WC = cvs['d_WC']
             d_HG = cvs['d_HG']
-            d_BP = cvs['d_BP']
+            # d_BP = cvs['d_BP']
             ops_trj = traj
             network = network
-            md_engine = md_engine
             scheme = scheme
 
         print("Initial conformation")
