@@ -18,13 +18,13 @@ class PathsamplingUtilities:
         self.file_names = [name for name in args]
         for idx, file_name in enumerate(self.file_names):
             try:
-                if Path(input_path / file_name).is_file():
+                if not Path(file_name).is_file():
                     self.file_names[idx] = str(input_path / file_name)
-                elif Path(file_name).is_file():
+                else:
                     pass
             except FileNotFoundError:
                 print(f'File {self.file_names[idx]} not found!')
-            if (Path(self.file_names[idx])).suffix == '*.db' and cyc_no:
+            if Path(self.file_names[idx]).suffix == '.db' and cyc_no:
                 import openpathsampling as paths
                 from openpathsampling.experimental.storage import monkey_patch_all
                 paths = monkey_patch_all(paths)

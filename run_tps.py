@@ -22,7 +22,7 @@ from openpathsampling.experimental.storage.collective_variables import MDTrajFun
 from openpathsampling.experimental.storage import Storage
 
 paths = monkey_patch_all(paths)
-sns.set(style='white', palette='muted', context='paper', color_codes=True, font_scale=1.8, rc={'text.usetex': True})
+sns.set(style='white', palette='muted', context='paper', color_codes=True, font_scale=1.8, rc={'text.usetex': False})
 # logging.config.fileConfig(f'logging.conf', disable_existing_loggers=False)
 
 
@@ -110,19 +110,17 @@ def run_ops(input_path=None, file_name=None, pdb_file=None, traj_file=None, cyc_
             scheme = scheme
 
         print("Initial conformation")
-        print(ops_trj)
-        # print(d_WC(ops_trj))
-        # print(d_HG(ops_trj))
-        # plt.plot(d_WC(ops_trj), d_HG(ops_trj), 'k.', label='Stable states')
+        
+        plt.plot(d_WC(ops_trj), d_HG(ops_trj), 'k.', label='Stable states')
 
-        # plt.xlabel("Hydrogen bond distance WC")
-        # plt.ylabel("Hydrogen bond distance HG")
-        # plt.title("Rotation")
-        # plt.tight_layout()
-        # if cyc_no:
-        #     plt.savefig(out_path / f'{file_name}_{run_id}_{str(cyc_no).zfill(2)}_h-bond_distances_initial.pdf', dpi=300)
-        # else:
-        #     plt.savefig(out_path / f'{file_name}_{run_id}_h-bond_distances_initial.pdf', dpi=300)
+        plt.xlabel("Hydrogen bond distance WC")
+        plt.ylabel("Hydrogen bond distance HG")
+        plt.title("Rotation")
+        plt.tight_layout()
+        if cyc_no:
+            plt.savefig(out_path / f'{file_name}_{run_id}_{str(cyc_no).zfill(2)}_h-bond_distances_initial.pdf', dpi=300)
+        else:
+            plt.savefig(out_path / f'{file_name}_{run_id}_h-bond_distances_initial.pdf', dpi=300)
 
         # Ensembles
         print('Subtrajectories')
@@ -131,16 +129,17 @@ def run_ops(input_path=None, file_name=None, pdb_file=None, traj_file=None, cyc_
         for ens in tqdm(network.analysis_ensembles, total=n_ensembles):
             subtrajectories += ens.split(ops_trj)
 
-        # plt.plot(d_WC(subtrajectories[0]), d_HG(subtrajectories[0]), color='r', label='State transitions')
+        plt.plot(d_WC(subtrajectories[0]), d_HG(subtrajectories[0]), color='r', label='State transitions')
 
-        # plt.xlabel("Hydrogen bond distance WC")
-        # plt.ylabel("Hydrogen bond distance HG")
-        # plt.title("Rotation")
-        # plt.tight_layout()
-        # if cyc_no:
-        #     plt.savefig(out_path / f'{file_name}_{run_id}_{str(cyc_no).zfill(2)}_h-bond_distances_subtrajectories.pdf', dpi=300)
-        # else:
-        #     plt.savefig(out_path / f'{file_name}_{run_id}_h-bond_distances_subtrajectories.pdf', dpi=300)
+        plt.xlabel("Hydrogen bond distance WC")
+        plt.ylabel("Hydrogen bond distance HG")
+        plt.title("Rotation")
+        plt.tight_layout()
+        if cyc_no:
+            plt.savefig(out_path / f'{file_name}_{run_id}_{str(cyc_no).zfill(2)}_h-bond_distances_subtrajectories.pdf',
+                        dpi=300)
+        else:
+            plt.savefig(out_path / f'{file_name}_{run_id}_h-bond_distances_subtrajectories.pdf', dpi=300)
 
         # Initial conditions
         initial_conditions = scheme.initial_conditions_from_trajectories(subtrajectories)
@@ -159,7 +158,7 @@ def run_ops(input_path=None, file_name=None, pdb_file=None, traj_file=None, cyc_
 
         logging.config.fileConfig(f'logging.conf', disable_existing_loggers=False)
 
-        sampler.save_frequency = 10
+        sampler.save_frequency = 2
         sampler.run(n_steps)
 
         print(storage.summary())

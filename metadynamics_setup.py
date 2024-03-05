@@ -2,6 +2,7 @@ import openmm as mm
 # print(mm.__version__)
 from openmm import app
 from openmm import unit
+from openmm.app.internal.unitcell import reducePeriodicBoxVectors
 from pathsampling_utilities import PathsamplingUtilities
 
 
@@ -88,5 +89,6 @@ class MetadynamicsSimulation:
             simulation = app.Simulation(self.topology, self.system, self.__setup_integrator())
 
         simulation.context.setPositions(self.positions)
+        simulation.context.setPeriodicBoxVectors(*reducePeriodicBoxVectors(self.pdb.topology.getPeriodicBoxVectors()))
 
         return simulation
