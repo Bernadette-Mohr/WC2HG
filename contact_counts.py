@@ -1,3 +1,5 @@
+import pickle
+
 import numpy as np
 import mdtraj as md
 import seaborn as sns
@@ -47,13 +49,18 @@ class ContactCount:
 
     def smooth_contact(self, r):
         # Compute contact based on distance smoothing function
-        return (1 - ((r - self.d0) / self.r0) ** self.nn) / (1 - ((r - self.d0) / self.r0) ** self.mm)
+        np.seterr(divide='ignore', invalid='ignore')
+        try:
+            return (1 - ((r - self.d0) / self.r0) ** self.nn) / (1 - ((r - self.d0) / self.r0) ** self.mm)
+        except RuntimeWarning:
+            return 0.0
 
     def compute_contacts(self):
         # Check where first condition holds
         ones = np.where(self.distances - self.d0 <= 0)
         # Apply second condition
         contacts = np.where(self.distances - self.d0 >= 0, self.smooth_contact(self.distances), self.distances)
+        np.seterr(divide='warn', invalid='warn')
         # Apply second condition (...)
         contacts[ones] = np.ones(ones[0].shape)
         return contacts
@@ -111,36 +118,47 @@ class ContactCount:
                                                contacts_per_residue_per_base.T[n_bases // 2][::-1])]).T
 
     @staticmethod
-    def check_axis(ax):
+    def check_axis(ax, rows, cols, x_size=8, y_size=8):
         if ax is None:
-            fig, ax = plt.subplots(figsize=(8, 8))
-        return fig, ax
+            fig, ax = plt.subplots(nrows=rows, ncols=cols, figsize=(x_size, y_size), dpi=300)
+            return fig, ax
+        else:
+            return None, ax
 
-    def plot_contact_map(self, ax=None, frame=-1):
-        fig, ax = self.check_axis(ax)
-        contact_matrices = self.get_contact_matrix()
+    def plot_contact_map(self, matrix_dir=None, matrix=None, ax=None, rows=1, cols=1, palette='viridis', label="$C_{Protein}$", frame=-1):
+        fig, ax = self.check_axis(ax, rows, cols)
+        if not matrix_dir:
+            contact_matrices = self.get_contact_matrix()
+            protein_labels = self.get_protein_names()
+            dna_labels = self.get_dna_names()
+        else:
+            with open(matrix_dir, 'rb') as file_:
+                contact_matrices = pickle.load(file_)[matrix]
+                dna_labels = pickle.load(file_)['nucleic_acids']
+                protein_labels = pickle.load(file_)['amino_acids']
         if frame == -1:
             im = ax.imshow(np.mean(contact_matrices, axis=0), vmin=np.min(self.contacts), vmax=np.max(self.contacts),
-                           aspect='auto')
+                           cmap=palette, aspect='auto')
         else:
             im = ax.imshow(contact_matrices[frame], vmin=np.min(self.contacts), vmax=np.max(self.contacts),
-                           aspect='auto')
+                           cmap=palette, aspect='auto')
 
-        protein_labels = self.get_protein_names()
-        dna_labels = self.get_dna_names()
+        plt.colorbar(im, ax=ax, label=label)
 
         ax.set_yticks(range(0, len(protein_labels)))
         ax.set_yticklabels(protein_labels)
-
         ax.set_xticks(range(0, len(dna_labels)))
         ax.set_xticklabels(dna_labels)
         ax.tick_params(axis="x", rotation=80)
-        ax.set_title(f'Contact map of frame {frame}')
-        plt.colorbar(im, ax=ax, label="$C_{Protein}$")
 
-    def plot_contact_distribution(self, ax=None, c='Red'):
-        fig, ax = self.check_axis(ax)
-        total_contacts = self.get_total_contacts()
+        ax.set_title(f'Contact map of frame {frame}')
+
+    def plot_contact_distribution(self, total_contacts=None, ax=None, rows=1, cols=1, c='Red'):
+        fig, ax = self.check_axis(ax, rows, cols)
+        if not total_contacts:
+            total_contacts = self.get_total_contacts()
+        else:
+            total_contacts = total_contacts
         df = pd.DataFrame(total_contacts)
 
         data = pd.DataFrame({

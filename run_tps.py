@@ -4,13 +4,13 @@ import os
 # sys.path.append(libdir)
 from pathlib import Path
 import argparse
-import h5py
 import time
-# from datetime import datetime
+from memory_profiler import profile
 import matplotlib.pyplot as plt
 import seaborn as sns
 import logging.config
 from multiprocessing import Process
+from tqdm.auto import tqdm
 
 import mdtraj as md
 from pathsampling_utilities import PathsamplingUtilities
@@ -22,13 +22,14 @@ from openpathsampling.experimental.storage.collective_variables import MDTrajFun
 from openpathsampling.experimental.storage import Storage
 
 paths = monkey_patch_all(paths)
-sns.set(style='whitegrid', palette='deep')
-sns.set_context(context='paper', font_scale=1.8)
-plt.rc('text', usetex=True)
+sns.set(style='white', palette='muted', context='paper', color_codes=True, font_scale=1.8, rc={'text.usetex': False})
+# logging.config.fileConfig(f'logging.conf', disable_existing_loggers=False)
 
 
 # from openpathsampling.experimental.simstore import StorableObject, StorableNamedObject, StorableObjectStore
 
+# decorator specifying the function to monitor the memory usage of (in this case, the function is run_ops)
+@profile
 def run_ops(input_path=None, file_name=None, pdb_file=None, traj_file=None, cyc_no=None, ff_list=None,
             config_file=None, out_path=None, n_steps=None, run_id=None, walltime=None):
     start_time = time.time()  # Time at the start of this process
@@ -36,7 +37,7 @@ def run_ops(input_path=None, file_name=None, pdb_file=None, traj_file=None, cyc_
     # Storage
     paths.InterfaceSet.simstore = True
     if cyc_no:
-        fname = Path(out_path / f'{file_name}_{run_id}_{cyc_no}').with_suffix('.db')
+        fname = Path(out_path / f'{file_name}_{run_id}_{str(cyc_no).zfill(2)}').with_suffix('.db')
     else:
         fname = Path(out_path / f'{file_name}_{run_id}').with_suffix('.db')
     storage = Storage(str(fname), 'w')
@@ -50,14 +51,13 @@ def run_ops(input_path=None, file_name=None, pdb_file=None, traj_file=None, cyc_
             runtime = False
 
         utils = PathsamplingUtilities()
-        if cyc_no is None:
-            traj_file, config_file, pdb_file = utils.get_inputs(traj_file, config_file, pdb_file,
-                                                                      input_path=input_path)
+        if config_file and not cyc_no:
+            traj_file, config_file, pdb_file = utils.get_inputs(traj_file, config_file, pdb_file, input_path=input_path)
             configs = utils.get_configs(config_file)
             setup = TransitionPathSampling(configs=configs, forcefield_list=ff_list, pdb_file=pdb_file,
                                            system_name=run_id, output_path=out_path)
             md_engine = setup.md_engine
-            template = setup.ops_template
+            ops_template = setup.ops_template
 
             print('Loading trajectory with MDTraj')
             # load initial trajectory from file
@@ -72,12 +72,12 @@ def run_ops(input_path=None, file_name=None, pdb_file=None, traj_file=None, cyc_
             # ha = topology.select('name "H3" and resid 16')[0]
 
             # Collective Variable
-            d_WC = MDTrajFunctionCV(md.compute_distances, topology=template.topology, atom_pairs=[bondlist[0]]).named(
-                'd_WC')
-            d_HG = MDTrajFunctionCV(md.compute_distances, topology=template.topology, atom_pairs=[bondlist[1]]).named(
-                'd_HG')
-            d_BP = MDTrajFunctionCV(md.compute_distances, topology=template.topology, atom_pairs=[bondlist[2]]).named(
-                'd_BP')
+            d_WC = MDTrajFunctionCV(md.compute_distances, topology=ops_template.topology,
+                                    atom_pairs=[bondlist[0]]).named('d_WC')
+            d_HG = MDTrajFunctionCV(md.compute_distances, topology=ops_template.topology,
+                                    atom_pairs=[bondlist[1]]).named('d_HG')
+            d_BP = MDTrajFunctionCV(md.compute_distances, topology=ops_template.topology,
+                                    atom_pairs=[bondlist[2]]).named('d_BP')
 
             # Volumes
             distarr = [0, 0.35]
@@ -98,11 +98,10 @@ def run_ops(input_path=None, file_name=None, pdb_file=None, traj_file=None, cyc_
             # Move scheme
             scheme = paths.OneWayShootingMoveScheme(network=network,
                                                     selector=paths.UniformSelector(),
-                                                    engine=md_engine)
+                                                    engine=md_engine).named('move_scheme')
         else:
-            traj, cvs, network, engine, ops_template, scheme = utils.get_inputs(traj_file, cyc_no=cyc_no,
-                                                                                input_path=input_path)
-            template = ops_template
+            traj, cvs, network, template, scheme = utils.get_inputs(traj_file, cyc_no=cyc_no, input_path=input_path)
+            ops_template = template
             d_WC = cvs['d_WC']
             d_HG = cvs['d_HG']
             # d_BP = cvs['d_BP']
@@ -111,6 +110,7 @@ def run_ops(input_path=None, file_name=None, pdb_file=None, traj_file=None, cyc_
             scheme = scheme
 
         print("Initial conformation")
+        
         plt.plot(d_WC(ops_trj), d_HG(ops_trj), 'k.', label='Stable states')
 
         plt.xlabel("Hydrogen bond distance WC")
@@ -118,14 +118,15 @@ def run_ops(input_path=None, file_name=None, pdb_file=None, traj_file=None, cyc_
         plt.title("Rotation")
         plt.tight_layout()
         if cyc_no:
-            plt.savefig(out_path / f'{file_name}_{run_id}_{cyc_no}_h-bond_distances_initial.pdf', dpi=300)
+            plt.savefig(out_path / f'{file_name}_{run_id}_{str(cyc_no).zfill(2)}_h-bond_distances_initial.pdf', dpi=300)
         else:
             plt.savefig(out_path / f'{file_name}_{run_id}_h-bond_distances_initial.pdf', dpi=300)
 
         # Ensembles
-        print('Subtrjajectories')
+        print('Subtrajectories')
         subtrajectories = []
-        for ens in network.analysis_ensembles:
+        n_ensembles = len(network.analysis_ensembles)
+        for ens in tqdm(network.analysis_ensembles, total=n_ensembles):
             subtrajectories += ens.split(ops_trj)
 
         plt.plot(d_WC(subtrajectories[0]), d_HG(subtrajectories[0]), color='r', label='State transitions')
@@ -135,14 +136,10 @@ def run_ops(input_path=None, file_name=None, pdb_file=None, traj_file=None, cyc_
         plt.title("Rotation")
         plt.tight_layout()
         if cyc_no:
-            plt.savefig(out_path / f'{file_name}_{run_id}_{cyc_no}_h-bond_distances_subtrajectories.pdf', dpi=300)
+            plt.savefig(out_path / f'{file_name}_{run_id}_{str(cyc_no).zfill(2)}_h-bond_distances_subtrajectories.pdf',
+                        dpi=300)
         else:
             plt.savefig(out_path / f'{file_name}_{run_id}_h-bond_distances_subtrajectories.pdf', dpi=300)
-
-        # # Move scheme
-        # scheme = paths.OneWayShootingMoveScheme(network=network,
-        #                                         selector=paths.UniformSelector(),
-        #                                         engine=md_engine)
 
         # Initial conditions
         initial_conditions = scheme.initial_conditions_from_trajectories(subtrajectories)
@@ -151,17 +148,17 @@ def run_ops(input_path=None, file_name=None, pdb_file=None, traj_file=None, cyc_
         print('Start TPS production run')
 
         # Storage
-        storage.save(template)
+        storage.save(ops_template)
         storage.save(ops_trj)
         storage.save(initial_conditions)
 
         sampler = paths.PathSampling(storage=storage,
                                      move_scheme=scheme,
-                                     sample_set=initial_conditions).named('TPS')
+                                     sample_set=initial_conditions).named('TPS_sampler')
 
         logging.config.fileConfig(f'logging.conf', disable_existing_loggers=False)
 
-        sampler.save_frequency = 10
+        sampler.save_frequency = 2
         sampler.run(n_steps)
 
         print(storage.summary())
@@ -171,29 +168,31 @@ def run_ops(input_path=None, file_name=None, pdb_file=None, traj_file=None, cyc_
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-dir', '--directory', type=Path, required=True, help='TODO')
+    parser.add_argument('-dir', '--directory', type=Path, required=True,
+                        help='Directory containing initial trajectory and configuration files.')
     parser.add_argument('-fn', '--filename', type=str, required=True,
                         help='Name for output files, identifying the molecular system.')
-    parser.add_argument('-pdb', '--coordinates', type=str, required=True,
+    parser.add_argument('-pdb', '--coordinates', type=str, required=False,
                         help='Name of the coordinate file in pdb format.')
     parser.add_argument('-tr', '--trajectory', type=str, required=True,
                         help='Name of the trajectory file in MDTraj-HDF5 format.')
-    parser.add_argument('-tr_no', '--trajectory_number', type=int, required=False, default=None,
+    parser.add_argument('-cyc', '--cycle_number', type=int, required=False,
                         help='In case of continuation run, provide number of cycle to start from in a TPS output file '
                              'in SQL *.db format.')
-    parser.add_argument('-ff', '--forcefield', nargs='+', type=str, required=True,
+    parser.add_argument('-ff', '--forcefield', nargs='+', type=str, required=False,
                         help='List of force field files to be used for the simulation. '
                              'EXAMPLE: amber14-all.xml amber14/tip3p.xml.')
-    parser.add_argument('-cfg', '--config_file', type=str, required=True,
+    parser.add_argument('-cfg', '--config_file', type=str, required=False,
                         help='File in python configparser format with simulation settings.')
     parser.add_argument('-out', '--output_path', type=Path, required=True,
-                        help='Name of the target directory for TPS run outputs.')
+                        help='Directory for storing TPS output files.')
     parser.add_argument('-nr', '--n_steps', type=int, required=True,
-                        help='The number of desired TPS runs.')
+                        help='The number of desired TPS MC cycles.')
     parser.add_argument('-id', '--run_id', type=str, required=False, default='TEST',
                         help='Id to correlate storage and trajectories of a specific run.')
     parser.add_argument('-t', '--time', type=int, required=True, default=3600,
-                        help='Walltime for TPS run in seconds.')
+                        help='Walltime for entire TPS run in seconds, ensures the output database to be closed '
+                             'correctly if run on a cluster with max. runtime for jobs.')
     args = parser.parse_args()
 
     in_path = args.directory  # -dir <input/directory/path>

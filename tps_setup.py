@@ -50,7 +50,7 @@ class TransitionPathSampling:
         else:
             self.platform = None
             self.platformProperties = None
-        self._options = {key: configs['OPS_OPTIONS'][key] for key in configs['OPS_OPTIONS']}
+        self._options = {key: configs['OPS_OPTIONS'].getint(key) for key in configs['OPS_OPTIONS']}
         self._forcefield = self.__get_forcefield()
         self.md_engine = self.setup_engine()
 
@@ -64,7 +64,7 @@ class TransitionPathSampling:
                                                ewaldErrorTolerance=self.ewaldErrorTolerance)
         system.addForce(mm.MonteCarloBarostat(self.pressure, self.temperature, self.barostatInterval))
         utils = PathsamplingUtilities()
-        utils.write_xml(filename=f'{self.output_path}/mtd_{self.system_name}_system.xml', object_=system)
+        utils.write_xml(filename=f'{self.output_path}/tps_{self.system_name}_system.xml', object_=system)
 
         return system
 
@@ -72,7 +72,7 @@ class TransitionPathSampling:
         integrator = VVVRIntegrator(self.temperature, self.friction, self.dt)
         integrator.setConstraintTolerance(self.constraintTolerance)
         utils = PathsamplingUtilities()
-        utils.write_xml(filename=f'{self.output_path}/mtd_{self.system_name}_integrator.xml', object_=integrator)
+        utils.write_xml(filename=f'{self.output_path}/tps_{self.system_name}_integrator.xml', object_=integrator)
 
         return integrator
 
