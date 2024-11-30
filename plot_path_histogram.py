@@ -37,7 +37,7 @@ class HistogramPlotter(PathHistogram):
         try:
             if config_file.absolute().is_file():
                 return config_file
-            if Path(self.directory / config_file).is_file():
+            elif Path(self.directory / config_file).is_file():
                 return self.directory / config_file
         except FileNotFoundError:
             print('Config file not found. Exiting.')
@@ -77,8 +77,8 @@ class HistogramPlotter(PathHistogram):
         self.set_plotting_options()
         _ = self.histogram(self.cv_trajs, self.weights)
 
-        csv_name = f'{self.identifier}_lambda_{self.collective_variable}_histogram.csv'
-        plot_name = f'{self.identifier}_lambda_{self.collective_variable}_plot.png'
+        csv_name = f'{self.identifier}_{self.collective_variable}_histogram.csv'
+        plot_name = f'{self.identifier}_{self.collective_variable}_plot.png'
         plotter = HistogramPlotter2D(self,
                                      xticklabels=self.xtick_labels,
                                      yticklabels=self.ytick_labels,
