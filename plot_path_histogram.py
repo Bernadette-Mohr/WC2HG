@@ -24,13 +24,24 @@ class HistogramPlotter(PathHistogram):
         super(HistogramPlotter, self).__init__(left_bin_edges=tuple(left_bin_edges), bin_widths=tuple(bin_widths))
         self.directory = directory
         self.cv_trajs, self.weights = self.load_cvs(cvs_pkl)
-        self.config_file = config_file
+        self.config_file = self.get_config_file(config_file)
         self.identifier = identifier
         self.collective_variable = collective_variable
         self.xtick_labels, self.ytick_labels = None, None
         self.ax_xdim, self.ax_ydim = None, None
         self.xax_label, self.yax_label = None, None
+        self.label_format = None
         self.gradient = sns.blend_palette(colors=colors, n_colors=len(colors), as_cmap=True, input='rgb')
+
+    def get_config_file(self, config_file):
+        try:
+            if config_file.absolute().is_file():
+                return config_file
+            if Path(self.directory / config_file).is_file():
+                return self.directory / config_file
+        except FileNotFoundError:
+            print('Config file not found. Exiting.')
+            sys.exit(1)
 
     def load_cvs(self, cvs_pkl):
         try:
@@ -59,19 +70,21 @@ class HistogramPlotter(PathHistogram):
         self.ax_ydim = tuple(float(val) for val in cv_config['ax_ydim'].split(','))
         self.xax_label = cv_config['xax_label']
         self.yax_label = cv_config['yax_label']
+        self.label_format = cv_config['label_format']
 
     def generate_histogram(self):
 
         self.set_plotting_options()
+        _ = self.histogram(self.cv_trajs, self.weights)
 
         csv_name = f'{self.identifier}_lambda_{self.collective_variable}_histogram.csv'
         plot_name = f'{self.identifier}_lambda_{self.collective_variable}_plot.png'
-        plotter = HistogramPlotter2D(self.add_data_to_histogram(self.cv_trajs[:100], self.weights[:100]),
+        plotter = HistogramPlotter2D(self,
                                      xticklabels=self.xtick_labels,
                                      yticklabels=self.ytick_labels,
                                      xlim=self.ax_xdim,
                                      ylim=self.ax_ydim,
-                                     label_format="{:4.2f}"
+                                     label_format=self.label_format,
                                      )
 
         # save histogram for local plotting
@@ -97,7 +110,7 @@ if __name__ == '__main__':
     parser.add_argument('-pkl', '--cvs_pkl', type=Path, required=True,
                         help='Provide the name of the pickle file with '
                              'existing CVs and weights. Example: \'SYSTEM_theta_CVs_weights.pkl\'.')
-    parser.add_argument('-cfg', '--config_file', type=str, required=False,
+    parser.add_argument('-cfg', '--config_file', type=Path, required=True,
                         help='File in python configparser format with simulation settings.')
     parser.add_argument('-lbe', '--left_bin_edges', type=float, nargs='+', required=True,
                         help='List of left bin edges for the histogram.')
