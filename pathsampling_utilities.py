@@ -96,9 +96,11 @@ class PathsamplingUtilities:
             print('File exists, choose new name or delete old file!')
 
     @staticmethod
-    def wrapper(gen, fname, start=0, len_db=None):
+    def wrapper(gen, fname, start=None, len_db=None):
         if not len_db:
             len_db = len(list(gen))
+        if not start:
+            start = 0
         for idx in tqdm(range(start, len_db), desc=f'Reading steps'):
             try:
                 yield gen[idx]
