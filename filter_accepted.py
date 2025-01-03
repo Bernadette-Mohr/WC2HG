@@ -33,15 +33,17 @@ def filter_trials(dir_path, dir_name, new_name):
     resumed = False
     for dir_idx, dir_ in enumerate(storage_dirs):
         storage_files = sorted(dir_.glob('*.db'))
+        print(storage_files)
         db_name = f'{new_name}.db'
+        print(db_name)
         if not Path(dir_path / db_name).is_file():
             new_storage = Storage(filename=f'{dir_path}/{db_name}', mode='w')
-            first_storage = Storage(filename=f'{sorted(dir_.glob("*.db"))[0]}', mode='r')
-            for cv in tqdm(first_storage.storable_functions, desc='Preloading cache'):
-                cv.preload_cache()
-            for obj in tqdm(first_storage.simulation_objects, desc='Copying simulation objects'):
-                new_storage.save(obj)
-            first_storage.close()
+            # first_storage = Storage(filename=f'{sorted(dir_.glob("*.db"))[0]}', mode='r')
+            # for cv in tqdm(first_storage.storable_functions, desc='Preloading cache'):
+            #     cv.preload_cache()
+            # for obj in tqdm(first_storage.simulation_objects, desc='Copying simulation objects'):
+            #     new_storage.save(obj)
+            # first_storage.close()
         else:
             resumed = True
             print(f'Resuming: {resumed}')
@@ -49,7 +51,9 @@ def filter_trials(dir_path, dir_name, new_name):
         
         old_cycle = 0
         for file_idx, fname in enumerate(storage_files):
+            print('fname:', fname, type(fname))
             storage = Storage(filename=f'{fname}', mode='r')
+            print(len(storage.steps))
             weights_file = Path(f'{dir_path}/{new_name}_weights.pkl')
             if weights_file.is_file():
                 with open(weights_file, 'rb') as infile:
