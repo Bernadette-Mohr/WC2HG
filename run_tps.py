@@ -107,8 +107,7 @@ def run_ops(input_path=None, file_name=None, pdb_file=None, traj_file=None, cyc_
               paths.CVDefinedVolume(angle_ON, lambda_min=angarr[0] / deg, lambda_max=angarr[2] / deg)).named("HG")
 
         # Trajectory
-        ops_trj = paths.engines.openmm.tools.trajectory_from_mdtraj(wc,
-                                                                    velocities=utils.extract_velocities(traj_file))
+        ops_trj = paths.engines.openmm.tools.trajectory_from_mdtraj(wc, velocities=utils.extract_velocities(traj_file))
 
         # Reaction network
         network = paths.TPSNetwork(initial_states=WC, final_states=HG).named('tps_network')

@@ -22,6 +22,7 @@ def restart_tps(directory, filename, n_runs, walltime):
             storage = Storage(str(filename), 'r')
     except FileNotFoundError:
         print('OPS storage file not found. Is it in the IO-directory or did you provide an absolute file path?')
+        raise FileNotFoundError
 
     sampler = storage.pathsimulators[0]
     # sampler.storage = storage

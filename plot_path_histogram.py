@@ -44,18 +44,22 @@ class HistogramPlotter(PathHistogram):
             sys.exit(1)
 
     def load_cvs(self, cvs_pkl):
-        try:
-            if cvs_pkl.is_file():
-                cvs_file = cvs_pkl
-            else:
-                cvs_file = self.directory / cvs_pkl
-            with open(cvs_file, 'rb') as f:
-                cvs = pickle.load(f)
-            trajs, weights = zip(*cvs)
-            return list(trajs), list(weights)
-        except FileNotFoundError:
-            print('Pickled CVs and weights not found. Exiting.')
-            sys.exit(1)
+        trajs, weights = list(), list()
+        for pkl in cvs_pkl:
+            try:
+                if pkl.is_file():
+                    cvs_file = pkl
+                else:
+                    cvs_file = self.directory / pkl
+                with open(cvs_file, 'rb') as f:
+                    cvs = pickle.load(f)
+                traj, weight = zip(*cvs)
+                trajs.extend(traj)
+                weights.extend(weight)
+            except FileNotFoundError:
+                print('Pickled CVs and weights not found. Exiting.')
+                sys.exit(1)
+        return trajs, weights
 
     def set_plotting_options(self):
         config = configparser.ConfigParser()
@@ -107,7 +111,7 @@ if __name__ == '__main__':
     parser.add_argument('-dir', '--directory', type=Path, required=True,
                         help='Directory for storing TPS input and output. Needs to contain OPS databases and '
                              'dictionaries with weights as values.')
-    parser.add_argument('-pkl', '--cvs_pkl', type=Path, required=True,
+    parser.add_argument('-pkl', '--cvs_pkl', type=Path, nargs='+', required=True,
                         help='Provide the name of the pickle file with '
                              'existing CVs and weights. Example: \'SYSTEM_theta_CVs_weights.pkl\'.')
     parser.add_argument('-cfg', '--config_file', type=Path, required=True,
