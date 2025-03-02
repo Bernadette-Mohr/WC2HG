@@ -1,7 +1,3 @@
-# import sys
-# import os
-# libdir = os.path.expanduser('/home/bmohr98/micromamba/envs/ops/lib/python3.9/site-packages/')
-# sys.path.append(libdir)
 from pathlib import Path
 import argparse
 import numpy as np

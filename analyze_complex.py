@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 mda = MDAnalysis
-sns.set(style='whitegrid', palette='deep', context='paper', font_scale=1.8)
+sns.set_theme(style='whitegrid', palette='deep', context='paper', font_scale=1.8)
 
 
 def load_universe(dir_path, traj_file, coord_file, clean):

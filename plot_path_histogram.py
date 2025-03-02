@@ -53,6 +53,7 @@ class HistogramPlotter(PathHistogram):
                     cvs_file = self.directory / pkl
                 with open(cvs_file, 'rb') as f:
                     cvs = pickle.load(f)
+                    print(f'Loaded {cvs_file}.')
                 traj, weight = zip(*cvs)
                 trajs.extend(traj)
                 weights.extend(weight)

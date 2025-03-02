@@ -1,5 +1,5 @@
 import sys
-import os
+# import os
 import argparse
 from pathlib import Path
 from multiprocessing import Process
@@ -10,8 +10,8 @@ import mdtraj as md
 from pathsampling_utilities import PathsamplingUtilities
 from metadynamics_setup import MetadynamicsSimulation
 
-libdir = os.path.expanduser('/home/bmohr98/micromamba/envs/ops/lib/python3.9/site-packages/')
-sys.path.append(libdir)
+# libdir = os.path.expanduser('/home/bmohr98/micromamba/envs/ops/lib/python3.9/site-packages/')
+# sys.path.append(libdir)
 
 
 def run_metadynamics_simulation(input_path=None, config_file=None, plumed_file=None, pdb_file=None,
