@@ -14,6 +14,7 @@ from openpathsampling.beta.hooks import GraciousKillHook, GraciousKillError
 from openpathsampling.experimental.storage import monkey_patch_all
 from openpathsampling.experimental.storage.collective_variables import MDTrajFunctionCV
 from openpathsampling.experimental.storage import Storage
+from openpathsampling.engines.openmm import tools
 
 paths = monkey_patch_all(paths)
 sns.set_theme(style='whitegrid', palette='deep')
@@ -65,13 +66,20 @@ def run_ops(input_path=None, file_name=None, pdb_file=None, traj_file=None, cyc_
                                                topology.select('name H62 and resid 6'),
                                                topology.select('name O4 and resid 16'))))))  # ON2
 
-        # Collective Variable
+        # Planar Base Pair Atoms
+        base_planar_atoms = []
+        base_planar_atoms.append(topology.select('resid 6 and name C2 C4 C6'))
+        base_planar_atoms.append(topology.select('resid 16 and name C2 C4 C6'))
+
+        # Collective Variables
+        # Distances
         d_WC = MDTrajFunctionCV(md.compute_distances, topology=ops_template.topology,
                                 atom_pairs=[bondlist[0]]).named('d_WC')
         d_HG = MDTrajFunctionCV(md.compute_distances, topology=ops_template.topology,
                                 atom_pairs=[bondlist[1]]).named('d_HG')
         d_BP = MDTrajFunctionCV(md.compute_distances, topology=ops_template.topology,
                                 atom_pairs=[bondlist[2]]).named('d_BP')
+        # Angles
         angle_WC = MDTrajFunctionCV(md.compute_angles, topology=ops_template.topology,
                                     angle_indices=[anglelist[0]]).named('angle_WC')
         angle_HG = MDTrajFunctionCV(md.compute_angles, topology=ops_template.topology,
@@ -86,24 +94,65 @@ def run_ops(input_path=None, file_name=None, pdb_file=None, traj_file=None, cyc_
 
         angle_ON = paths.FunctionCV("angle_ON", get_angle_ON, angles_ON_cv=angles_ON)
 
+        def calculate_plane_angle(snapshot, indices1, indices2):
+            """
+            Calculate the angle between two planes defined by atom indices.
+
+            Parameters:
+                snapshot (snapshot from trajectory): The snapshot object.
+                indices1 (list of int): Atom indices defining the first plane.
+                indices2 (list of int): Atom indices defining the second plane.
+
+            Returns:
+                float: The angle (in degrees) between the two planes.
+            """
+            import numpy as np
+
+            def compute_normal(indices):
+                """Compute the normal vector of a plane defined by three atom indices."""
+                points = snapshot.xyz[indices, :]
+                v1 = points[1] - points[0]
+                v2 = points[2] - points[0]
+                normal = np.cross(v1, v2)
+                return normal / np.linalg.norm(normal)
+
+            normal1 = compute_normal(indices1)
+            normal2 = compute_normal(indices2)
+
+            # Compute the angle between the two normal vectors
+            cos_theta = np.clip(np.dot(normal1, normal2), -1.0, 1.0)
+            angle = np.arccos(cos_theta) * (180.0 / np.pi)
+
+            # Ensure the angle is in the same range for flipped and normal bases
+            angle = min(angle, 180.0 - angle)
+
+            return np.array(angle)
+
+        # Normal vector to ensure planar conformation bases
+        a_Plane = paths.FunctionCV("a_Plane", calculate_plane_angle, indices1=base_planar_atoms[0],
+                                   indices2=base_planar_atoms[1])
+
         # Volumes
         distarr = [0, 0.3]
-        angarr = [155, 165, 180]
+        angarr = [0, 20, 155, 165, 180]
         deg = 180 / np.pi
 
         # Defining the stable states
         WC = (paths.CVDefinedVolume(d_WC, lambda_min=distarr[0], lambda_max=distarr[1]) &
               paths.CVDefinedVolume(d_BP, lambda_min=distarr[0], lambda_max=distarr[1]) &
-              paths.CVDefinedVolume(angle_WC, lambda_min=angarr[1] / deg, lambda_max=angarr[2] / deg) &
-              paths.CVDefinedVolume(angle_ON, lambda_min=angarr[1] / deg, lambda_max=angarr[2] / deg)).named("WC")
+              paths.CVDefinedVolume(angle_WC, lambda_min=angarr[3] / deg, lambda_max=angarr[4] / deg) &
+              paths.CVDefinedVolume(angle_ON, lambda_min=angarr[3] / deg, lambda_max=angarr[4] / deg) &
+              paths.CVDefinedVolume(a_Plane, lambda_min=angarr[0], lambda_max=angarr[1])).named("WC")
 
         HG = (paths.CVDefinedVolume(d_HG, lambda_min=distarr[0], lambda_max=distarr[1]) &
               paths.CVDefinedVolume(d_BP, lambda_min=distarr[0], lambda_max=distarr[1]) &
-              paths.CVDefinedVolume(angle_HG, lambda_min=angarr[0] / deg, lambda_max=angarr[2] / deg) &
-              paths.CVDefinedVolume(angle_ON, lambda_min=angarr[0] / deg, lambda_max=angarr[2] / deg)).named("HG")
+              paths.CVDefinedVolume(angle_HG, lambda_min=angarr[2] / deg, lambda_max=angarr[4] / deg) &
+              paths.CVDefinedVolume(angle_ON, lambda_min=angarr[2] / deg, lambda_max=angarr[4] / deg) &
+              paths.CVDefinedVolume(a_Plane, lambda_min=angarr[0], lambda_max=angarr[1])).named("HG")
 
         # Trajectory
         ops_trj = paths.engines.openmm.tools.trajectory_from_mdtraj(wc, velocities=utils.extract_velocities(traj_file))
+        ops_trj = tools.reduce_trajectory_box_vectors(ops_trj)
 
         # Reaction network
         network = paths.TPSNetwork(initial_states=WC, final_states=HG).named('tps_network')
@@ -138,7 +187,7 @@ def run_ops(input_path=None, file_name=None, pdb_file=None, traj_file=None, cyc_
     subtrajectories = []
     for ens in network.analysis_ensembles:
         subtrajectories += ens.split(ops_trj)
-
+    
     plt.plot(d_WC(subtrajectories[0]), d_HG(subtrajectories[0]), color='r', label='State transitions')
 
     plt.xlabel("Hydrogen bond distance WC")
