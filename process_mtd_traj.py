@@ -77,9 +77,9 @@ def plot_traj(traj_file, dir_path, out_name, new_path, sys_name) -> None:
         # traj_file is already a loaded MDTraj trajectory object
         traj = traj_file
     else:
-        # traj_file is likely an h5py File object or file path
+        # traj_file is likely a h5py File object or file path
         if hasattr(traj_file, 'filename'):
-            # It's an h5py File object, get the filename and load with MDTraj
+            # It's a h5py File object, get the filename and load with MDTraj
             traj = md.load_hdf5(traj_file.filename)
         else:
             raise ValueError(f"Cannot handle traj_file of type {type(traj_file)}")
@@ -244,7 +244,7 @@ if __name__ == '__main__':
                     "python process.py -ip /path/to/data -on output_name -sys NAME concatenate -fl file1.h5 file2.h5 file3.h5"
                     "python script.py -ip /path/to/data -on sliced_traj -sys NAME slice trajectory_name --frames 1000 5000"
                     "python script.py -ip /path/to/data -on sliced_traj -sys NAME slice trajectory_name -c 20"
-                    "python script.py -ip /path/to/data -on plot_output -sys NAME plot trajectory_name")"
+                    "python script.py -ip /path/to/data -on plot_output -sys NAME plot trajectory_name")
 
     # Shared arguments that all commands need
     parser.add_argument('-ip', '--in_path', type=Path, required=True,

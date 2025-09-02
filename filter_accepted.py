@@ -4,9 +4,9 @@ import pickle
 from tqdm.auto import tqdm
 import openpathsampling as paths
 from openpathsampling.experimental.storage import monkey_patch_all
-from openpathsampling.experimental.storage import Storage
 paths = monkey_patch_all(paths)
 paths.InterfaceSet.simstore = True
+from openpathsampling.experimental.storage import Storage
 
 
 def wrapper(gen, fname, start, len_db):
@@ -24,26 +24,23 @@ def filter_trials(dir_path, dir_name, new_name):
 
        Parameters:
        -----------
-       dir_path: The base path to the folders containing the TPS run, storage locaton for files with collected paths
+       dir_path: The base path to the folders containing the TPS run, storage location for files with collected paths
                  and weights.
        dir_name: The folders containing parts of a TPS run.
-       new_name: the name of the .db file that will contain all accpted paths."""
-
+       new_name: the name of the .db file that will contain all accepted paths."""
     storage_dirs = sorted(dir_path.glob(f'{dir_name}*'))
     resumed = False
     for dir_idx, dir_ in enumerate(storage_dirs):
         storage_files = sorted(dir_.glob('*.db'))
-        print(storage_files)
         db_name = f'{new_name}.db'
-        print(db_name)
         if not Path(dir_path / db_name).is_file():
             new_storage = Storage(filename=f'{dir_path}/{db_name}', mode='w')
-            # first_storage = Storage(filename=f'{sorted(dir_.glob("*.db"))[0]}', mode='r')
-            # for cv in tqdm(first_storage.storable_functions, desc='Preloading cache'):
-            #     cv.preload_cache()
-            # for obj in tqdm(first_storage.simulation_objects, desc='Copying simulation objects'):
-            #     new_storage.save(obj)
-            # first_storage.close()
+            first_storage = Storage(filename=f'{sorted(dir_.glob("*.db"))[0]}', mode='r')
+            for cv in tqdm(first_storage.storable_functions, desc='Preloading cache'):
+                cv.preload_cache()
+            for obj in tqdm(first_storage.simulation_objects, desc='Copying simulation objects'):
+                new_storage.save(obj)
+            first_storage.close()
         else:
             resumed = True
             print(f'Resuming: {resumed}')
@@ -51,9 +48,7 @@ def filter_trials(dir_path, dir_name, new_name):
         
         old_cycle = 0
         for file_idx, fname in enumerate(storage_files):
-            print('fname:', fname, type(fname))
             storage = Storage(filename=f'{fname}', mode='r')
-            print(len(storage.steps))
             weights_file = Path(f'{dir_path}/{new_name}_weights.pkl')
             if weights_file.is_file():
                 with open(weights_file, 'rb') as infile:
@@ -88,12 +83,14 @@ def filter_trials(dir_path, dir_name, new_name):
                         new_storage.save(step)
             
             # Save weights dict
+            print(weights_dict)
             with open(weights_file, 'wb') as f:
                 pickle.dump(weights_dict, f, pickle.HIGHEST_PROTOCOL)
 
             new_storage.sync_all()
-            new_storage.close()
             storage.close()
+        
+        new_storage.close()
 
 
 if __name__ == '__main__':
