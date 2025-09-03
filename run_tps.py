@@ -1,4 +1,3 @@
-import sys
 from pathlib import Path
 import argparse
 import numpy as np
@@ -260,7 +259,7 @@ if __name__ == "__main__":
     parser.add_argument('-wt', '--walltime', type=str, required=True, default="4 days 12 hours",
                         help='Walltime for TPS run as str, e.g. \"23 hours 20 minutes\", ensures the output database to '
                              'be closed correctly if run on a cluster with max. runtime for jobs.\n '
-                             'ATTENTION: Preprossessing steps are not included in the walltime.')
+                             'ATTENTION: Preprocessing steps are not included in the walltime.')
     args = parser.parse_args()
 
     in_path = args.directory  # -dir <input/directory/path>

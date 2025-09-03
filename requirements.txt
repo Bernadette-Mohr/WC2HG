@@ -1,0 +1,10 @@
+h5py==3.14.0
+matplotlib==3.10.6
+mdtraj==1.11.0
+numpy==2.3.2
+OpenMM==8.3.1
+openmmtools==0.25.1
+openpathsampling==1.5.2
+pandas==2.3.2
+seaborn==0.13.2
+tqdm==4.67.1

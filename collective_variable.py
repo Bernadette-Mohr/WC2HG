@@ -7,7 +7,7 @@ class CollectiveVariable:
     @classmethod
     def angle_between_vectors(cls, v1, v2, angle=False):
         # Chose whether to calculate the angle as arctan2 [-180°, 180°] or arccos [0°, 180°]
-        if angle is True:
+        if angle:
             normal = np.cross(v1, v2)
             # Use the sign of the z coordinate of the normal to determine if the angle is rotated (counter-)clockwise
             # and reflect the full angle range from -180° to 180° in the 3D case.
@@ -60,7 +60,7 @@ class CollectiveVariable:
         """
         Parameters
         ----------
-        :param angle: selects wether the angle between two vectors is calculated as atan2 (True) or arccos (False).
+        :param angle: selects whether the angle between two vectors is calculated as atan2 (True) or arccos (False).
         :param snapshot: ops trajectory frame
         :param rollingbase_idx: list of the indices of the N1, N3 and N7 atoms defining the vectors of the rolling base
         :param backbone_idx: list of the P atom indices defining the backbone vector
