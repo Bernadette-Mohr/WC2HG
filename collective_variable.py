@@ -1,11 +1,13 @@
 import numpy as np
+import openpathsampling as paths
+import openpathsampling.experimental.storage.collective_variables as cvs
 
 class CollectiveVariable:
     def __init__(self):
         pass
 
     @classmethod
-    def angle_between_vectors(cls, v1, v2, angle=False):
+    def angle_between_vectors(cls, v1: np.ndarray, v2: np.ndarray, angle: bool=False) -> float:
         # Chose whether to calculate the angle as arctan2 [-180°, 180°] or arccos [0°, 180°]
         if angle:
             normal = np.cross(v1, v2)
@@ -26,7 +28,9 @@ class CollectiveVariable:
 
     @classmethod
     def base_opening_angle(
-            cls, snapshot, comI_cv, comII_cv, comIII_cv, comIV_cv, angle_between_vectors_cv, angle
+            cls, snapshot, comI_cv: cvs.MDTrajFunctionCV, comII_cv: cvs.MDTrajFunctionCV,
+            comIII_cv: cvs.MDTrajFunctionCV, comIV_cv: cvs.MDTrajFunctionCV, angle_between_vectors_cv:
+            paths.CollectiveVariable, angle: bool
     ):
         """
         Parameters:
@@ -50,13 +54,13 @@ class CollectiveVariable:
         norm1 = np.cross(vec_21, vec_23)
         norm2 = np.cross(vec_24, vec_23)
 
-        return angle_between_vectors_cv(norm1, norm2,
-                                        angle)  # hard-coded negative sign in the code to Vreede et al., 2019
+        return angle_between_vectors_cv(norm1, norm2, angle)  # hard-coded negative sign in the code to Vreede et al., 2019
 
     @classmethod
     def base_rolling_angle(
-            cls, snapshot, backbone_idx, rollingbase_idx, angle_between_vectors_cv, angle
-    ):
+            cls, snapshot, backbone_idx: list, rollingbase_idx: list,
+            angle_between_vectors_cv: paths.CollectiveVariable, angle: bool
+    ) -> float:
         """
         Parameters
         ----------
@@ -67,7 +71,7 @@ class CollectiveVariable:
         :param angle_between_vectors_cv: function to calculate the angle between two vectors.
         """
 
-        def normalize(vector):
+        def normalize(vector: np.ndarray) -> np.ndarray:
             norm = np.linalg.norm(vector)
             if norm == 0:
                 return vector
@@ -95,7 +99,7 @@ class CollectiveVariable:
 
     # lambda = arctan2(dHG, dWC)
     @classmethod
-    def lambda_CV(cls, snapshot, d_WC_cv, d_HG_cv):
+    def lambda_CV(cls, snapshot: np.ndarray, d_WC_cv: cvs.MDTrajFunctionCV, d_HG_cv: cvs.MDTrajFunctionCV) -> float:
         """
         Parameters:
         :param snapshot:

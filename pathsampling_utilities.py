@@ -14,40 +14,61 @@ class PathsamplingUtilities:
         self.velocities = None
         self.sliced_trajectory = None
 
-    def get_inputs(self, *args: str, cyc_no: int = None, input_path: Path = None) -> list:
-        self.file_names = [name for name in args]
-        for idx, file_name in enumerate(self.file_names):
-            try:
-                if not Path(file_name).is_file():
-                    self.file_names[idx] = str(input_path / file_name)
-                else:
-                    pass
-            except FileNotFoundError:
-                print(f'File {self.file_names[idx]} not found!')
-            if Path(self.file_names[idx]).suffix == '.db' and cyc_no:
-                import openpathsampling as paths
-                from openpathsampling.experimental.storage import monkey_patch_all
-                paths = monkey_patch_all(paths)
-                paths.InterfaceSet.simstore = True
-                from openpathsampling.experimental.storage import Storage
-                storage = Storage(str(file_name), 'r')
-                self.file_names[idx] = storage.steps[cyc_no].active[0].trajectory
-                cvs = dict()
-                for cv in storage.storable_functions:
-                    cvs[cv.name] = cv
-                network = storage.networks[0]
-                engine = storage.engines[2]
-                template = None
-                scheme = None
-                for obj in storage.simulation_objects:
-                    if obj.name == '[MDTrajTopology]':
-                        template = obj
-                    elif obj.name == '[OneWayShootingMoveScheme]':
-                        scheme = obj
-                self.file_names.extend([cvs, network, engine, template, scheme])
-                storage.close()
+    def get_inputs(self, traj_file: str, cyc_no: int = None, input_path: Path = None,
+                   config_file: str = None, pdb_file: str = None) -> tuple:
+        """
+        Load inputs for TPS simulation.
 
-        return self.file_names
+        Returns:
+            If traj_file is .db with cyc_no: (trajectory, cvs_dict, network, engine, template, scheme)
+            If traj_file is .h5: (traj_file_path, config_file_path, pdb_file_path)
+        """
+        # Resolve trajectory file path
+        traj_path = Path(traj_file)
+        if not traj_path.is_file() and input_path:
+            traj_path = input_path / traj_file
+
+        if not traj_path.exists():
+            raise FileNotFoundError(f'Trajectory file not found: {traj_path}')
+
+        # Case 1: Database file with cycle number - extract OPS objects
+        if traj_path.suffix == '.db' and cyc_no is not None:
+            from openpathsampling.experimental.storage import Storage
+
+            storage = Storage(str(traj_path), 'r')
+            trajectory = storage.steps[cyc_no].active[0].trajectory
+
+            cvs = {cv.name: cv for cv in storage.storable_functions}
+            network = storage.networks[0]
+            engine = storage.engines[2]
+
+            template = None
+            scheme = None
+            for obj in storage.simulation_objects:
+                if obj.name == '[MDTrajTopology]':
+                    template = obj
+                elif obj.name == '[OneWayShootingMoveScheme]':
+                    scheme = obj
+
+            storage.close()
+            return trajectory, cvs, network, engine, template, scheme
+
+        # Case 2: HDF5 file - return file paths
+        else:
+            # Resolve config and pdb file paths
+            resolved_files = [str(traj_path)]
+            for file in [config_file, pdb_file]:
+                if file:
+                    file_path = Path(file)
+                    if not file_path.is_file() and input_path:
+                        file_path = input_path / file
+                    if not file_path.exists():
+                        raise FileNotFoundError(f'File not found: {file_path}')
+                    resolved_files.append(str(file_path))
+                else:
+                    resolved_files.append(None)
+
+            return tuple(resolved_files)
 
     def get_configs(self, config_file):
         self.configs = configparser.ConfigParser()

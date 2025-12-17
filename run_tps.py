@@ -34,8 +34,10 @@ def run_ops(input_path=None, file_name=None, pdb_file=None, traj_file=None, cyc_
     storage = Storage(str(fname), 'w')
 
     utils = PathsamplingUtilities()
-    if config_file and not cyc_no:
-        traj_file, config_file, pdb_file = utils.get_inputs(traj_file, config_file, pdb_file, input_path=input_path)
+    if config_file and cyc_no is None:
+        traj_file, config_file, pdb_file = utils.get_inputs(
+            traj_file, input_path=input_path, config_file=config_file, pdb_file=pdb_file
+        )
         configs = utils.get_configs(config_file)
         setup = TransitionPathSampling(configs=configs, forcefield_list=ff_list, pdb_file=pdb_file,
                                        system_name=run_id, output_path=out_path)
@@ -67,9 +69,8 @@ def run_ops(input_path=None, file_name=None, pdb_file=None, traj_file=None, cyc_
                                                topology.select('name O4 and resid 16'))))))  # ON2
 
         # Planar Base Pair Atoms
-        base_planar_atoms = []
-        base_planar_atoms.append(topology.select('resid 6 and name C2 C4 C6'))
-        base_planar_atoms.append(topology.select('resid 16 and name C2 C4 C6'))
+        base_planar_atoms = [topology.select('resid 6 and name C2 C4 C6'),
+                             topology.select('resid 16 and name C2 C4 C6')]
 
         # Collective Variables
         # Distances
@@ -162,13 +163,11 @@ def run_ops(input_path=None, file_name=None, pdb_file=None, traj_file=None, cyc_
                                                 engine=md_engine).named('move_scheme')
     else:
         print('Continuing...')
-        traj, cvs, network, _, template, scheme = utils.get_inputs(traj_file, cyc_no=cyc_no, input_path=input_path)
-        ops_template = template
+        ops_trj, cvs, network, _, ops_template, scheme = utils.get_inputs(
+            traj_file, cyc_no=cyc_no, input_path=input_path
+        )
         d_WC = cvs['d_WC']
         d_HG = cvs['d_HG']
-        ops_trj = traj
-        network = network
-        scheme = scheme
 
     print("Initial conformation")
     plt.plot(d_WC(ops_trj), d_HG(ops_trj), 'k.', label='Stable states')

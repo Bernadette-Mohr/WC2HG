@@ -1,20 +1,18 @@
 import argparse
 from collections import deque
 import mdtraj as md
-import numpy as np
 import openpathsampling as paths
 from openpathsampling.experimental.storage import monkey_patch_all
-from openpathsampling.experimental.storage import Storage
-import pandas as pd
-from pathlib import Path
-import pickle
-import time
-from tqdm import tqdm
-from pathsampling_utilities import PathsamplingUtilities
-from collective_variable import CollectiveVariable
-
 paths = monkey_patch_all(paths)
 paths.InterfaceSet.simstore = True
+from openpathsampling.experimental.storage import Storage
+from pathlib import Path
+import time
+from tqdm import tqdm
+from collective_variable import CollectiveVariable
+from cv_data_manager import create_dna_cv_manager
+from pathsampling_utilities import PathsamplingUtilities
+from typing import Any
 
 
 class DataLoader:
@@ -22,10 +20,10 @@ class DataLoader:
     Load and manage OPS trajectory data.
     """
     def __init__(self):
-        self.trajectories = list()
+        self.raw_storages = list()
         self.new_storage = None
 
-    def load_data(self, root_path, dir_name, new_name) -> tuple:
+    def load_data(self, root_path: Path, dir_name: str, new_name: str | None) -> tuple:
         """
         Load OPS trajectories and weights from databases and dictionaries.
 
@@ -40,13 +38,13 @@ class DataLoader:
 
         storage_dirs = sorted(root_path.glob(f'{dir_name}*'))
         for dir_ in storage_dirs:
-            self.trajectories.extend(sorted(dir_.glob('*.db')))
+            self.raw_storages.extend(sorted(dir_.glob('*.db')))
 
         db_name = f'{new_name}.db'
         db_path = root_path / db_name
         if not db_path.is_file():
-            self.new_storage = Storage(filename=f'{root_path}/{db_name}', mode='w')
-            first_storage = Storage(filename=str(self.trajectories[0]), mode='r')
+            self.new_storage = Storage(filename=f'{db_path}', mode='w')
+            first_storage = Storage(filename=str(self.raw_storages[0]), mode='r')
             cvs_list = [first_storage.cvs['d_WC'], first_storage.cvs['d_HG']]
             engine = first_storage.engines[0]
             for cv in tqdm(first_storage.storable_functions, desc='Preloading cache'):
@@ -60,162 +58,14 @@ class DataLoader:
             cvs_list = [self.new_storage.cvs['d_WC'], self.new_storage.cvs['d_HG']]
             engine = self.new_storage.engines[0]
 
-        return self.trajectories, self.new_storage, cvs_list, engine
 
-
-class CVDataManager:
-    """Manages storage and retrieval of CV data with trajectory relationships."""
-
-    def __init__(self):
-        self.data = {}
-        self.cv_names = ['dHG', 'dWC', 'lambda', 'theta', 'phi']
-
-    def add_trajectory_data(self, mcc, cv_results_list) -> None:
-        """
-        Add CV data for one trajectory.
-
-        Args:
-            :param mcc: MC cycle number (trajectory identifier)
-            :param cv_results_list: List of list of tuples, each tuple contains CV values for one frame of the trajectory,
-            and corresponding weight
-        """
-        cv_arrays = {}
-        weight, cv_tuples_list = None, None
-
-        if cv_results_list:
-            cv_tuples_list = cv_results_list[0]
-            weight = cv_results_list[1]
-            n_cvs = len(cv_results_list[0][0])
-
-            for idx, cv_name in enumerate(self.cv_names[:n_cvs]):
-                cv_arrays[cv_name] = [frame_cvs[idx] for frame_cvs in cv_tuples_list]
-
-        self.data[mcc] = {
-            'cv_arrays': cv_arrays,
-            'weight': weight,
-            'n_frames': len(cv_tuples_list)
-        }
-
-    def save_to_dataframe(self, filepath) -> None:
-        """Save to parquet format."""
-        rows = []
-        for mcc, traj_data in self.data.items():
-            row = {
-                'MCC': mcc,
-                'weight': traj_data['weight'],
-                'n_frames': traj_data['n_frames']
-            }
-            # Add CV arrays as columns
-            for cv_name, cv_array in traj_data['cv_arrays'].items():
-                row[f'{cv_name}_array'] = np.array(cv_array)
-            rows.append(row)
-
-        df = pd.DataFrame(rows)
-        df.to_parquet(filepath, index=False)
-
-    def save_to_pickle(self, filepath) -> None:
-        """Save nested structure to pickle."""
-        with open(filepath, 'wb') as f:
-            pickle.dump(self.data, f, pickle.HIGHEST_PROTOCOL)
-
-    def load_from_pickle(self, filepath) -> None:
-        """Load nested structure from pickle."""
-        with open(filepath, 'rb') as f:
-            self.data = pickle.load(f)
-
-    def _load_from_parquet(self, filepath) -> None:
-        """Load CV data from parquet file and convert to nested structure."""
-        df = pd.read_parquet(filepath)
-        self._dataframe_to_nested_dict(df)
-
-    def _dataframe_to_nested_dict(self, df) -> None:
-        """
-        Convert DataFrame back to nested dictionary structure.
-
-        Expected DataFrame columns:
-        - MCC: MC cycle number (trajectory identifier)
-        - frame_idx or snapshot_idx: Frame number within trajectory
-        - weight: Weight for the trajectory
-        - CV columns: dHG, dWC, lambda, theta, phi, etc.
-        """
-        self.data = {}  # Reset the data dictionary
-
-        # Group by MCC (each group = one trajectory)
-        for mcc, group in df.groupby('MCC'):
-            # Sort frames in correct order
-            if 'frame_idx' in group.columns:
-                group = group.sort_values('frame_idx')
-            elif 'snapshot_idx' in group.columns:
-                group = group.sort_values('snapshot_idx')
-
-            weight = group['weight'].iloc[0]
-            cv_arrays = {}
-
-            for cv_name in self.cv_names:
-                if cv_name in group.columns:
-                    cv_arrays[cv_name] = group[cv_name].tolist()
-
-            self.data[mcc] = {
-                'cv_arrays': cv_arrays,  # Dict of CV_name -> list of values
-                'weight': weight,  # Single weight for whole trajectory
-                'n_frames': len(group)  # Number of frames in trajectory
-            }
-
-    def load_previous_cvs(self, filepath, dir_path, expected_mc_cycle=None) -> tuple:
-        """Load existing CV data from file for resuming calculations.
-        Args: filepath: Path to existing CV file (pickle or parquet).
-              expected_mc_cycle: Expected last MC cycle number (for validation).
-        Returns: Tuple of (old_cycle, resumed) where old_cycle is the last MC cycle
-                 number found in the file, and resumed is a boolean indicating
-                 whether we are resuming from existing data.
-            """
-        old_cycle = 0  # Default: start from cycle 0
-        resumed = False  # Default: not resuming from existing data
-
-        if not filepath:
-            print('No previous CVs file provided. Starting fresh calculation...')
-            return old_cycle, resumed
-
-        filepath = Path(filepath)  # Convert to Path object for easier handling
-        if not filepath.is_file() and dir_path:
-            filepath = Path(dir_path) / filepath
-            if not filepath.is_file():
-                print(f'CV file {filepath} does not exist. Starting fresh calculation...')
-                return old_cycle, resumed
-
-        print(f'Loading previous CVs from {filepath}. Resuming calculation...')
-
-        try:
-            if str(filepath).endswith('.pkl'):
-                self.load_from_pickle(filepath)
-            elif str(filepath).endswith('.parquet'):
-                self._load_from_parquet(filepath)
-            else:
-                raise ValueError(f"Unsupported file format: {filepath}")
-
-            # Process the loaded data
-            if self.data:
-                old_cycle = max(self.data.keys())
-
-                if expected_mc_cycle is not None and old_cycle != expected_mc_cycle:
-                    print(f'MC cycle mismatch: expected {expected_mc_cycle}, found {old_cycle}')
-                    return None, None
-
-                resumed = True
-
-            else:
-                print('Warning: Loaded file contains no CV data.')
-
-        except Exception as e:
-            print(f'Error loading CV file {filepath}: {e}')
-            return None, None
-
-        return old_cycle, resumed
+        return self.raw_storages, self.new_storage, cvs_list, engine
 
 
 class CVCalculator:
-    def __init__(self, directory, base_name, rolling_residues, backbone_residues,
-                 angle, identifier, cvs_name=None, mc_cycle=None, max_steps=None, wall_time=None):
+    def __init__(self, directory: Path, base_name: str, rolling_residues: list[int], backbone_residues: list[int],
+                 angle: bool, identifier: str, cvs_name: int =None, mc_cycle: int =None,
+                 max_steps: int =None, wall_time: int =None,):
         self.root_path = Path(directory)
         self.dir_name = base_name
         self.id_str = identifier
@@ -230,24 +80,24 @@ class CVCalculator:
 
         self.trajectory_loader = DataLoader()
         self.utils = PathsamplingUtilities()
-        self.cv_manager = CVDataManager()
+        self.cv_manager = create_dna_cv_manager()
         self.cvs = list()
 
-    def _save_results(self, output_dir) -> None:
+    def _save_results(self, output_dir: str | None) -> None:
         """Save results in multiple formats."""
         output_dir = Path(output_dir)
 
         pickle_path = output_dir / f'{self.id_str}_cv_data.pkl'
         self.cv_manager.save_to_pickle(pickle_path)
 
-        dataframe_path = output_dir / f'{self.id_str}_cv_data.parquet'
+        dataframe_path = output_dir / f'{self.id_str}_cv_data.parquet.gzip'
         self.cv_manager.save_to_dataframe(dataframe_path)
 
         print(f"Saved CV data:")
         print(f"  - Nested structure: {pickle_path}")
         print(f"  - DataFrame: {dataframe_path}")
 
-    def _check_time_and_step_limits(self, iteration_durations, old_cycle, fname) -> bool:
+    def _check_time_and_step_limits(self, iteration_durations: deque[Any] , old_cycle: int, fname: str) -> bool:
         """Check if we should stop due to time or step limits."""
         # Check step limits
         if self.n_steps and len(self.cv_manager.data) >= self.n_steps:
@@ -269,7 +119,7 @@ class CVCalculator:
 
         return False
 
-    def _calculate_and_store(self, trajectories, new_storage) -> None:
+    def _calculate_and_store(self, raw_storages: list[Path], new_storage: Storage) -> None:
         """Main calculation loop with data storage."""
         # Copied from OpenPathSampling PathDensityHistogram(PathHistogram), l. 367
         def _add_ops_trajectory(trajectory, weight) -> list:
@@ -283,10 +133,9 @@ class CVCalculator:
             return
 
         # Process each trajectory file
-        for file_idx, fname in enumerate(tqdm(trajectories,
-                                              total=len(trajectories),
-                                              desc='Processing trajectory files...')):
-            print(f"Processing file: {fname}")
+        for file_idx, fname in enumerate(tqdm(raw_storages,
+                                              total=len(raw_storages),
+                                              desc='Processing raw storage files')):
             iteration_start_time = time.time()
 
             try:
@@ -304,13 +153,13 @@ class CVCalculator:
                         wt = new_cycle - old_cycle
 
                         # Calculate CVs and add to DataFrame
-                        results_list = _add_ops_trajectory(step, wt)
+                        results_list = _add_ops_trajectory(step.active[0].trajectory, wt)
                         self.cv_manager.add_trajectory_data(new_cycle, results_list)
                         new_storage.save(step)
                         old_cycle = new_cycle
 
                         # Periodically save progress
-                        if len(self.cv_manager.data) % 100 == 0:
+                        if len(self.cv_manager.data) % 10 == 0:
                             new_storage.sync_all()
                             pickle_path = self.root_path / f'{self.id_str}_cv_data.pkl'
                             self.cv_manager.save_to_pickle(pickle_path)
@@ -323,6 +172,7 @@ class CVCalculator:
                         new_storage.sync_all()
                         new_storage.close()
                         self._save_results(self.root_path)
+                        storage.close()
                         return
 
                 storage.close()
@@ -343,14 +193,13 @@ class CVCalculator:
         residA, residT = self.rolling_residues  # 6, 16
 
         try:
-            (trajectories,
-             storage,
+            (raw_storages,
+             new_storage,
              cvs_list,
              engine) = self.trajectory_loader.load_data(self.root_path, self.dir_name, f'{self.id_str}_accepted')
         except Exception as e:
             print(f"Error loading data: {e}")
             return
-
         self.cvs.extend(cvs_list)
 
         if not self.angle:
@@ -394,7 +243,7 @@ class CVCalculator:
                 comIII_cv=comIII,
                 comIV_cv=comIV,
                 angle_between_vectors_cv=CollectiveVariable.angle_between_vectors,
-                angle=self.angle,
+                angle=False,  # self.angle,
             )
 
             resid_bb_start = self.backbone_residues[0]  # 1
@@ -408,7 +257,7 @@ class CVCalculator:
                 backbone_idx=engine.topology.mdtraj.select(backbone_atoms),
                 rollingbase_idx=engine.topology.mdtraj.select(rollingbase_atoms),
                 angle_between_vectors_cv=CollectiveVariable.angle_between_vectors,
-                angle=self.angle,
+                angle=True,  # self.angle,
             )
 
             self.cvs.extend([lambda_, theta_, phi_])
@@ -418,7 +267,7 @@ class CVCalculator:
             return
 
         # Start calculation
-        self._calculate_and_store(trajectories, storage)
+        self._calculate_and_store(raw_storages, new_storage)
 
 
 if __name__ == '__main__':

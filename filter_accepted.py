@@ -29,10 +29,10 @@ def filter_trials(dir_path, dir_name, new_name):
        dir_name: The folders containing parts of a TPS run.
        new_name: the name of the .db file that will contain all accepted paths."""
     storage_dirs = sorted(dir_path.glob(f'{dir_name}*'))
+    db_name = f'{new_name}.db'
     resumed = False
     for dir_idx, dir_ in enumerate(storage_dirs):
         storage_files = sorted(dir_.glob('*.db'))
-        db_name = f'{new_name}.db'
         if not Path(dir_path / db_name).is_file():
             new_storage = Storage(filename=f'{dir_path}/{db_name}', mode='w')
             first_storage = Storage(filename=f'{sorted(dir_.glob("*.db"))[0]}', mode='r')
